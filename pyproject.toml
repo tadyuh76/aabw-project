@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scamdna-data-module"
+version = "0.1.0"
+description = "Hackathon crawler control plane and evidence pipeline for ScamDNA"
+requires-python = ">=3.9"
+dependencies = [
+  "httpx==0.28.1",
+  "python-dotenv==1.2.1",
+  "streamlit==1.50.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["data_module*"]
