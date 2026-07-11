@@ -1362,7 +1362,7 @@ h1 span { display: block; color: var(--accent); }
 .bank-shell.theme-light .next-actions-section,
 .bank-shell.theme-light .campaign-list,
 .bank-shell.theme-light .next-action-list,
-.bank-shell.theme-light .specific-scam-card,
+.bank-shell.theme-light .specific-scam,
 .bank-shell.theme-light .bank-workspace,
 .bank-shell.theme-light .bank-detail-grid > section,
 .bank-shell.theme-light .export-section {
