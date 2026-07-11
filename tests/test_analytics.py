@@ -15,6 +15,7 @@ DOCUMENTS = [
         "document_id": "doc-1",
         "category": "scam_report",
         "confidence": 0.95,
+        "specific_case": True,
         "severity": 5,
         "scam_types": ["transfer_fraud"],
         "bank_roles": ["recipient_account_provider"],
@@ -27,6 +28,7 @@ DOCUMENTS = [
         "document_id": "doc-2",
         "category": "scam_report",
         "confidence": 0.85,
+        "specific_case": True,
         "severity": 4,
         "scam_types": ["fake_seller"],
         "bank_roles": ["recipient_account_provider"],
@@ -39,6 +41,7 @@ DOCUMENTS = [
         "document_id": "doc-3",
         "category": "impersonation_abuse",
         "confidence": 0.75,
+        "specific_case": True,
         "severity": 3,
         "scam_types": ["phishing"],
         "bank_roles": ["impersonated_brand"],
@@ -51,6 +54,7 @@ DOCUMENTS = [
         "document_id": "doc-4",
         "category": "noise",
         "confidence": 0.25,
+        "specific_case": False,
         "severity": 1,
         "scam_types": [],
         "bank_roles": [],
@@ -107,6 +111,152 @@ def test_union_find_clusters_transitive_strong_links_and_omits_isolates():
     ]
     assert linked["evidence_document_ids"] == linked["document_ids"]
     assert linked["evidence_indicator_keys"] == linked["shared_indicator_keys"]
+    assert linked["anchor_indicator_key"] == "bank_account|001234567890"
+    assert linked["cluster_id"] == linked["campaign_key"]
+    assert [row["document_id"] for row in linked["memberships"]] == [
+        "doc-1",
+        "doc-2",
+        "doc-3",
+    ]
+
+
+def test_generic_or_mistyped_indicators_remain_metrics_but_cannot_merge_campaigns():
+    generic_documents = [
+        {
+            "document_id": "generic-1",
+            "category": "scam_report",
+            "confidence": 0.9,
+            "specific_case": True,
+            "severity": 3,
+            "indicators": [
+                {"type": "social_account", "value": "Zalo"},
+                {
+                    "type": "social_account",
+                    "value": "Facebook group quản trị viên không được nêu tên",
+                },
+                {"type": "bank_account", "value": "BIDV"},
+            ],
+        },
+        {
+            "document_id": "generic-2",
+            "category": "scam_report",
+            "confidence": 0.9,
+            "specific_case": True,
+            "severity": 3,
+            "indicators": [
+                {"type": "social_account", "value": "Zalo"},
+                {
+                    "type": "social_account",
+                    "value": "Facebook group quản trị viên không được nêu tên",
+                },
+                {"type": "bank_account", "value": "BIDV"},
+            ],
+        },
+        {
+            "document_id": "generic-3",
+            "category": "impersonation_abuse",
+            "confidence": 0.9,
+            "specific_case": True,
+            "severity": 3,
+            "indicators": [
+                {"type": "social_account", "value": "Facebook"},
+                {"type": "bank_account", "value": "TECHCOMBANK"},
+            ],
+        },
+        {
+            "document_id": "generic-4",
+            "category": "impersonation_abuse",
+            "confidence": 0.9,
+            "specific_case": True,
+            "severity": 3,
+            "indicators": [
+                {"type": "social_account", "value": "Facebook"},
+                {"type": "bank_account", "value": "TECHCOMBANK"},
+            ],
+        },
+    ]
+
+    metrics = build_metrics(generic_documents)
+    by_key = {row["indicator_key"]: row for row in metrics["by_indicator"]}
+    assert by_key["social_account|zalo"]["document_count"] == 2
+    assert by_key["social_account|facebook"]["document_count"] == 2
+    assert by_key["bank_account|BIDV"]["document_count"] == 2
+    assert by_key["bank_account|TECHCOMBANK"]["document_count"] == 2
+    assert cluster_documents(generic_documents) == []
+    assert not any(
+        row["anomaly_type"] == "repeated_indicator"
+        for row in detect_anomalies(generic_documents)
+    )
+
+
+def test_legitimate_vn_identifiers_create_explainable_stable_memberships():
+    documents = [
+        {
+            "document_id": "case-a",
+            "category": "scam_report",
+            "confidence": 0.92,
+            "specific_case": True,
+            "severity": 4,
+            "first_seen_at": "2026-02-03T10:00:00+00:00",
+            "last_seen_at": "2026-02-05T10:00:00+00:00",
+            "indicators": [
+                {
+                    "type": "bank_account",
+                    "value": "001 234 567 890",
+                    "confidence": 1,
+                    "evidence_source": "post_text",
+                    "evidence_quote": "Chuyển tiền vào STK 001234567890",
+                }
+            ],
+        },
+        {
+            "document_id": "case-b",
+            "category": "scam_report",
+            "confidence": 0.9,
+            "specific_case": True,
+            "severity": 4,
+            "first_seen_at": "2026-02-01T10:00:00+00:00",
+            "last_seen_at": "2026-02-06T10:00:00+00:00",
+            "indicators": [
+                {"type": "bank_account", "value": "001234567890"},
+                {"type": "phone", "value": "+84 912 345 678"},
+            ],
+        },
+        {
+            "document_id": "case-c",
+            "category": "impersonation_abuse",
+            "confidence": 0.88,
+            "specific_case": True,
+            "severity": 3,
+            "first_seen_at": "2026-02-02T10:00:00+00:00",
+            "last_seen_at": "2026-02-04T10:00:00+00:00",
+            "indicators": [{"type": "phone", "value": "0912345678"}],
+        },
+    ]
+
+    cluster = cluster_documents(documents)[0]
+    reversed_cluster = cluster_documents(list(reversed(documents)))[0]
+    assert cluster == reversed_cluster
+    assert cluster["anchor_indicator_key"] == "bank_account|001234567890"
+    assert cluster["campaign_key"].startswith("campaign_")
+    assert cluster["cluster_id"] == cluster["campaign_key"]
+    assert cluster["first_seen_at"] == "2026-02-01T10:00:00+00:00"
+    assert cluster["last_seen_at"] == "2026-02-06T10:00:00+00:00"
+
+    memberships = {row["document_id"]: row for row in cluster["memberships"]}
+    assert memberships["case-a"]["membership_score"] == 0.98
+    assert memberships["case-b"]["membership_score"] == 0.999
+    assert memberships["case-c"]["membership_score"] == 0.95
+    assert [
+        reason["indicator_key"] for reason in memberships["case-b"]["reasons"]
+    ] == ["bank_account|001234567890", "phone|0912345678"]
+    assert memberships["case-a"]["reasons"][0]["evidence_quote"] == (
+        "Chuyển tiền vào STK 001234567890"
+    )
+    assert memberships["case-a"]["first_seen_at"] == (
+        "2026-02-03T10:00:00+00:00"
+    )
+
 
 def test_weak_indicators_are_metrics_but_never_campaign_edges():
     documents = [
@@ -114,6 +264,7 @@ def test_weak_indicators_are_metrics_but_never_campaign_edges():
             "document_id": "weak-1",
             "category": "scam_report",
             "confidence": 0.8,
+            "specific_case": True,
             "severity": 3,
             "indicators": [
                 {"type": "url", "value": "https://example.com/post/1"},
@@ -125,6 +276,7 @@ def test_weak_indicators_are_metrics_but_never_campaign_edges():
             "document_id": "weak-2",
             "category": "scam_report",
             "confidence": 0.7,
+            "specific_case": True,
             "severity": 3,
             "indicators": [
                 {"type": "url", "value": "https://example.com/post/1"},
@@ -146,12 +298,46 @@ def test_weak_indicators_are_metrics_but_never_campaign_edges():
     )
 
 
+def test_message_templates_are_evidence_but_never_campaign_edges():
+    documents = [
+        {
+            "document_id": "message-1",
+            "category": "scam_report",
+            "confidence": 0.99,
+            "specific_case": True,
+            "severity": 4,
+            "indicators": [
+                {"type": "message_template", "value": "verify before 11 PM"}
+            ],
+        },
+        {
+            "document_id": "message-2",
+            "category": "scam_report",
+            "confidence": 0.98,
+            "specific_case": True,
+            "severity": 4,
+            "indicators": [
+                {"type": "message_template", "value": "verify before 11 PM"}
+            ],
+        },
+    ]
+
+    metrics = build_metrics(documents)
+    assert metrics["by_indicator"][0]["document_count"] == 2
+    assert cluster_documents(documents) == []
+    assert not any(
+        anomaly["anomaly_type"] == "repeated_indicator"
+        for anomaly in detect_anomalies(documents)
+    )
+
+
 def test_campaign_inference_excludes_non_scam_and_low_confidence_documents():
     documents = [
         {
             "document_id": "eligible-scam",
             "category": "scam_report",
             "confidence": 0.8,
+            "specific_case": True,
             "severity": 4,
             "indicators": [{"type": "phone", "value": "0912345678"}],
         },
@@ -159,6 +345,7 @@ def test_campaign_inference_excludes_non_scam_and_low_confidence_documents():
             "document_id": "eligible-abuse",
             "category": "impersonation_abuse",
             "confidence": 0.6,
+            "specific_case": True,
             "severity": 4,
             "indicators": [{"type": "phone", "value": "+84 912 345 678"}],
         },
@@ -166,6 +353,7 @@ def test_campaign_inference_excludes_non_scam_and_low_confidence_documents():
             "document_id": "low-confidence",
             "category": "scam_report",
             "confidence": 0.59,
+            "specific_case": True,
             "severity": 4,
             "indicators": [{"type": "phone", "value": "0912345678"}],
         },
@@ -173,6 +361,7 @@ def test_campaign_inference_excludes_non_scam_and_low_confidence_documents():
             "document_id": "legitimate-news",
             "category": "news_pr",
             "confidence": 0.99,
+            "specific_case": True,
             "severity": 4,
             "indicators": [{"type": "phone", "value": "0912345678"}],
         },
@@ -199,6 +388,45 @@ def test_campaign_inference_excludes_non_scam_and_low_confidence_documents():
         "eligible-abuse",
         "eligible-scam",
     ]
+
+
+def test_non_specific_scam_reports_never_create_campaign_inference():
+    documents = [
+        {
+            "document_id": "specific",
+            "category": "scam_report",
+            "confidence": 0.95,
+            "specific_case": True,
+            "severity": 4,
+            "indicators": [{"type": "phone", "value": "0912345678"}],
+        },
+        {
+            "document_id": "generic-warning-1",
+            "category": "scam_report",
+            "confidence": 0.98,
+            "specific_case": False,
+            "severity": 4,
+            "indicators": [{"type": "phone", "value": "0912345678"}],
+        },
+        {
+            "document_id": "generic-warning-2",
+            "category": "impersonation_abuse",
+            "confidence": 0.9,
+            "specific_case": "false",
+            "severity": 4,
+            "indicators": [{"type": "phone", "value": "+84 912 345 678"}],
+        },
+    ]
+
+    metrics = build_metrics(documents)
+    assert metrics["by_indicator"][0]["document_count"] == 3
+    assert cluster_documents(documents) == []
+    campaign_anomalies = [
+        row
+        for row in detect_anomalies(documents)
+        if row["anomaly_type"] in {"repeated_indicator", "burst_size"}
+    ]
+    assert campaign_anomalies == []
 
 
 def test_anomalies_cover_high_severity_repeated_indicators_and_burst_size():

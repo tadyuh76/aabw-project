@@ -14,9 +14,99 @@ from .pipeline.normalization import stable_hash
 
 logger = logging.getLogger(__name__)
 
+_CAMPAIGN_ELIGIBLE_CATEGORIES = frozenset(
+    {"scam_report", "impersonation_abuse"}
+)
+_DURABLE_CAMPAIGN_INDICATOR_TYPES = frozenset(
+    {
+        "bank_account",
+        "phone",
+        "email",
+        "domain",
+        "social_account",
+        "qr_payload",
+        "transaction_reference",
+        "media_hash",
+    }
+)
+
 
 def utcnow() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def _campaign_label(anchor_indicator_key: str, scam_types: Sequence[str]) -> str:
+    """Generate a safe provisional English label without overwriting analyst edits."""
+
+    kind, _, value = str(anchor_indicator_key).partition("|")
+    type_label = {
+        "bank_account": "Bank account",
+        "phone": "Phone",
+        "email": "Email",
+        "domain": "Domain",
+        "social_account": "Social account",
+        "qr_payload": "QR payload",
+        "transaction_reference": "Transaction reference",
+        "media_hash": "Shared media",
+        "message_template": "Message pattern",
+    }.get(kind, "Indicator")
+    if kind in {"bank_account", "phone", "transaction_reference"}:
+        display_value = "••••" + value[-4:]
+    elif len(value) > 36:
+        display_value = value[:33] + "…"
+    else:
+        display_value = value
+    scam_type = str(next(iter(scam_types or []), "")).strip().casefold()
+    scam_parts = [part for part in scam_type.split("_") if part]
+    if (
+        not scam_parts
+        or len(scam_parts) > 5
+        or any(len(part) < 2 for part in scam_parts)
+        or len(scam_type) > 48
+    ):
+        scam_label = "Suspected Scam"
+    else:
+        scam_label = " ".join(scam_parts).title()
+    return "{} · {} {}".format(scam_label, type_label, display_value).strip()
+
+
+def _validate_campaign_cluster(cluster: Mapping[str, Any]) -> None:
+    """Reject non-scam or phrase-only derivative clusters before persistence."""
+
+    document_count = int(cluster.get("document_count") or 0)
+    category_counts = list(cluster.get("category_counts") or [])
+    categories = {
+        str(row.get("category") or "")
+        for row in category_counts
+        if isinstance(row, Mapping)
+    }
+    categorized_documents = sum(
+        int(row.get("document_count") or 0)
+        for row in category_counts
+        if isinstance(row, Mapping)
+    )
+    anchor_key = str(cluster.get("anchor_indicator_key") or "")
+    anchor_kind = anchor_key.partition("|")[0]
+    memberships = list(cluster.get("memberships") or [])
+    membership_ids = [
+        str(row.get("document_id") or "")
+        for row in memberships
+        if isinstance(row, Mapping)
+    ]
+
+    if (
+        document_count < 2
+        or not categories
+        or not categories.issubset(_CAMPAIGN_ELIGIBLE_CATEGORIES)
+        or categorized_documents != document_count
+        or anchor_kind not in _DURABLE_CAMPAIGN_INDICATOR_TYPES
+        or len(membership_ids) != document_count
+        or len(set(membership_ids)) != document_count
+        or any(not document_id for document_id in membership_ids)
+    ):
+        raise ValueError(
+            "Campaign persistence requires a complete scam-only cluster with a durable anchor"
+        )
 
 
 class SupabaseRestClient:
@@ -74,14 +164,102 @@ class SupabaseRestClient:
         filters: Optional[Mapping[str, str]] = None,
         order: Optional[str] = None,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         params: Dict[str, Any] = {"select": columns}
         params.update(filters or {})
         if order:
             params["order"] = order
         if limit is not None:
+            if limit < 0:
+                raise ValueError("limit cannot be negative")
             params["limit"] = str(limit)
+        if offset is not None:
+            if offset < 0:
+                raise ValueError("offset cannot be negative")
+            params["offset"] = str(offset)
         return self._request("GET", table, params=params)
+
+    def select_paginated(
+        self,
+        table: str,
+        *,
+        columns: str = "*",
+        filters: Optional[Mapping[str, str]] = None,
+        order: Optional[str] = None,
+        limit: Optional[int] = None,
+        page_size: int = 1000,
+        unique_key: str = "id",
+    ) -> List[Dict[str, Any]]:
+        """Read beyond PostgREST's per-request row cap.
+
+        Offset pagination is made deterministic by appending ``unique_key`` as a
+        tie-breaker to the requested ordering. Rows are also de-duplicated by that
+        key so a row moving across a page boundary during a live refresh cannot be
+        returned twice.
+        """
+
+        if limit is not None and limit < 0:
+            raise ValueError("limit cannot be negative")
+        if not 1 <= page_size <= 1000:
+            raise ValueError("page_size must be between 1 and 1000")
+        if not unique_key.strip():
+            raise ValueError("unique_key is required for deterministic pagination")
+        if limit == 0:
+            return []
+
+        requested_order = str(order or "").strip()
+        order_fields = {
+            clause.strip().split(".", 1)[0]
+            for clause in requested_order.split(",")
+            if clause.strip()
+        }
+        deterministic_order = requested_order
+        if unique_key not in order_fields:
+            deterministic_order = ",".join(
+                value for value in (requested_order, unique_key + ".asc") if value
+            )
+
+        rows: List[Dict[str, Any]] = []
+        seen: set[Any] = set()
+        offset = 0
+        while limit is None or len(rows) < limit:
+            request_limit = page_size
+            if limit is not None:
+                request_limit = min(request_limit, limit - len(rows))
+            page = self.select(
+                table,
+                columns=columns,
+                filters=filters,
+                order=deterministic_order,
+                limit=request_limit,
+                offset=offset,
+            )
+            if not page:
+                break
+
+            offset += len(page)
+            added = 0
+            for row in page:
+                identity = row.get(unique_key)
+                if identity is None:
+                    raise RuntimeError(
+                        "Paginated Supabase selection must include " + unique_key
+                    )
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                rows.append(row)
+                added += 1
+                if limit is not None and len(rows) >= limit:
+                    break
+
+            if len(page) < request_limit:
+                break
+            if added == 0:
+                raise RuntimeError("Supabase pagination made no progress")
+
+        return rows
 
     def insert(self, table: str, payload: Any) -> List[Dict[str, Any]]:
         return self._request(
@@ -135,6 +313,14 @@ class SupabaseRepository:
         self.rest = rest or SupabaseRestClient(
             settings.supabase_url, settings.supabase_service_role_key
         )
+
+    def _select_paginated(self, table: str, **kwargs: Any) -> List[Dict[str, Any]]:
+        """Use paginated reads while retaining lightweight repository test doubles."""
+
+        select_paginated = getattr(self.rest, "select_paginated", None)
+        if callable(select_paginated):
+            return select_paginated(table, **kwargs)
+        return self.rest.select(table, **kwargs)
 
     def create_job(self, payload: Mapping[str, Any]) -> Dict[str, Any]:
         params = dict(payload.get("parameters") or payload)
@@ -292,8 +478,11 @@ class SupabaseRepository:
             filters["status"] = "eq." + status
         if item_type:
             filters["item_type"] = "eq." + item_type
-        return self.rest.select(
-            "crawl_items", filters=filters, order="created_at.asc", limit=limit
+        return self._select_paginated(
+            "crawl_items",
+            filters=filters,
+            order="created_at.asc,id.asc",
+            limit=limit,
         )
 
     def retry_failed_items(self, job_id: str) -> List[Dict[str, Any]]:
@@ -356,6 +545,80 @@ class SupabaseRepository:
             limit=limit,
         )
 
+    def list_documents_for_reclassification(
+        self,
+        *,
+        limit: int = 100,
+        platforms: Sequence[str] = (),
+        categories: Sequence[str] = (),
+        classification_statuses: Sequence[str] = (),
+        document_ids: Sequence[str] = (),
+        published_after: Optional[str] = None,
+        published_before: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Load already-fetched evidence for a classification-only batch.
+
+        The nested comments/media are read as evidence; callers update only the
+        classification and indicator tables, so this query never causes a refetch.
+        """
+
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+
+        def in_filter(values: Sequence[str]) -> str:
+            cleaned = [str(value).strip() for value in values if str(value).strip()]
+            if any(any(character in value for character in ",()") for value in cleaned):
+                raise ValueError("PostgREST filter values cannot contain ',', '(' or ')'")
+            return "in.({})".format(",".join(cleaned))
+
+        filters: Dict[str, str] = {"fetch_status": "eq.completed"}
+        if platforms:
+            filters["platform"] = in_filter(platforms)
+        if classification_statuses:
+            filters["classification_status"] = in_filter(classification_statuses)
+        if document_ids:
+            filters["id"] = in_filter(document_ids)
+        if published_after and published_before:
+            filters["and"] = "(published_at.gte.{},published_at.lte.{})".format(
+                published_after, published_before
+            )
+        elif published_after:
+            filters["published_at"] = "gte." + published_after
+        elif published_before:
+            filters["published_at"] = "lte." + published_before
+
+        classification_relation = "classifications!inner" if categories else "classifications"
+        if categories:
+            filters["classifications.primary_category"] = in_filter(categories)
+
+        return self._select_paginated(
+            "documents",
+            columns=(
+                "id,canonical_url,platform,author_display_name,title,body,language,"
+                "published_at,search_title,search_snippet,fetch_status,"
+                "classification_status,last_seen_at,"
+                "document_comments(id,author_display_name,body,published_at),"
+                "media_evidence(id,source_url,visual_description,extracted_text,"
+                "qr_present,qr_payload,vision_status,vision_confidence),"
+                "{}(primary_category,confidence,severity,specific_case,prompt_version)".format(
+                    classification_relation
+                )
+            ),
+            filters=filters,
+            order="last_seen_at.desc,id.asc",
+            limit=limit,
+        )
+
+    def set_document_classification_status(
+        self, document_id: str, status: str
+    ) -> Dict[str, Any]:
+        rows = self.rest.update(
+            "documents",
+            {"classification_status": str(status)},
+            {"id": "eq." + str(document_id)},
+        )
+        return rows[0] if rows else {}
+
     def upsert_discovery(
         self,
         *,
@@ -392,16 +655,17 @@ class SupabaseRepository:
     def list_global_analysis_documents(self, limit: int = 5000) -> List[Dict[str, Any]]:
         """Load all classified documents and their indicator edges for global analysis."""
 
-        return self.rest.select(
+        return self._select_paginated(
             "documents",
             columns=(
                 "id,canonical_url,published_at,first_seen_at,last_seen_at,"
-                "classifications(primary_category,confidence,severity,scam_types,bank_roles),"
+                "classifications(primary_category,confidence,severity,specific_case,"
+                "scam_types,bank_roles),"
                 "document_indicators(confidence,evidence_source,evidence_quote,"
                 "indicators(kind,normalized_value,display_value))"
             ),
             filters={"classification_status": "eq.completed"},
-            order="last_seen_at.desc",
+            order="last_seen_at.desc,id.asc",
             limit=limit,
         )
 
@@ -466,7 +730,9 @@ class SupabaseRepository:
         for cluster in analytics.get("clusters") or []:
             if not cluster.get("is_linked") or int(cluster.get("document_count") or 0) < 2:
                 continue
-            cluster_key = str(cluster.get("cluster_id") or "")
+            _validate_campaign_cluster(cluster)
+            analytics_cluster_id = str(cluster.get("cluster_id") or "")
+            cluster_key = str(cluster.get("campaign_key") or analytics_cluster_id)
             if not cluster_key:
                 continue
             document_count = int(cluster.get("document_count") or 0)
@@ -477,6 +743,7 @@ class SupabaseRepository:
                 {
                     "job_id": job_id,
                     "cluster_key": cluster_key,
+                    "algorithm": "strong_indicator_components_v3_scam_only",
                     "is_active": True,
                     "risk_score": risk_score,
                     "document_count": document_count,
@@ -488,8 +755,11 @@ class SupabaseRepository:
                     "bank_roles": cluster.get("bank_roles") or [],
                     "indicator_keys": cluster.get("indicator_keys") or [],
                     "shared_indicator_keys": cluster.get("shared_indicator_keys") or [],
+                    "first_seen_at": cluster.get("first_seen_at"),
+                    "last_seen_at": cluster.get("last_seen_at"),
                     "metrics": {
                         "is_linked": bool(cluster.get("is_linked")),
+                        "anchor_indicator_key": cluster.get("anchor_indicator_key"),
                         "document_indicator_edge_count": int(
                             cluster.get("document_indicator_edge_count") or 0
                         ),
@@ -501,17 +771,32 @@ class SupabaseRepository:
                 continue
             cluster_id = str(rows[0]["id"])
             cluster_ids[cluster_key] = cluster_id
+            if analytics_cluster_id:
+                cluster_ids[analytics_cluster_id] = cluster_id
             self.rest.delete(
                 "campaign_cluster_documents", {"cluster_id": "eq." + cluster_id}
             )
+            memberships = list(cluster.get("memberships") or [])
+            if not memberships:
+                memberships = [
+                    {
+                        "document_id": document_id,
+                        "membership_score": 1,
+                        "reasons": [],
+                    }
+                    for document_id in cluster.get("document_ids") or []
+                ]
             members = [
                 {
                     "cluster_id": cluster_id,
-                    "document_id": str(document_id),
-                    "membership_score": 1,
-                    "reasons": [],
+                    "document_id": str(membership.get("document_id")),
+                    "membership_score": float(
+                        membership.get("membership_score") or 0
+                    ),
+                    "reasons": membership.get("reasons") or [],
                 }
-                for document_id in cluster.get("document_ids") or []
+                for membership in memberships
+                if membership.get("document_id")
             ]
             if members:
                 self.rest.upsert(
@@ -582,6 +867,290 @@ class SupabaseRepository:
             order="risk_score.desc,document_count.desc",
             limit=limit,
         )
+
+    def list_stable_campaigns(
+        self, limit: int = 200, *, active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Return the analyst-facing campaign layer for future matching APIs."""
+
+        filters = {"is_active": "eq.true", "status": "neq.dismissed"} if active_only else None
+        return self._select_paginated(
+            "campaigns",
+            columns=(
+                "*,campaign_documents(document_id,membership_score,reasons,"
+                "analyst_confirmed,is_active,documents(canonical_url,title,published_at)),"
+                "campaign_indicators(role,weight,reasons,is_active,"
+                "indicators(id,kind,normalized_value,display_value))"
+            ),
+            filters=filters,
+            order="risk_score.desc,document_count.desc,id.asc",
+            limit=limit,
+        )
+
+    def replace_stable_campaigns(
+        self,
+        job_id: Optional[str],
+        analytics: Mapping[str, Any],
+        *,
+        prune: bool = True,
+    ) -> Dict[str, int]:
+        """Materialize durable campaigns from explainable derivative clusters.
+
+        Analyst-edited labels, statuses, campaign confirmations and membership
+        confirmations are deliberately omitted from update payloads. They survive
+        future crawler refreshes while unconfirmed derivative rows can be marked
+        inactive and replaced safely.
+        """
+
+        clusters: List[Dict[str, Any]] = []
+        for raw_cluster in analytics.get("clusters") or []:
+            cluster = dict(raw_cluster)
+            if not cluster.get("is_linked") or int(cluster.get("document_count") or 0) < 2:
+                continue
+            _validate_campaign_cluster(cluster)
+            clusters.append(cluster)
+        existing_campaigns = self._select_paginated(
+            "campaigns", order="updated_at.desc,id.asc", limit=5000
+        )
+        existing_by_key = {
+            str(row.get("campaign_key")): dict(row)
+            for row in existing_campaigns
+            if row.get("campaign_key")
+        }
+        derivative_clusters = self._select_paginated(
+            "campaign_clusters",
+            columns="id,cluster_key",
+            filters={"is_active": "eq.true"},
+            order="id.asc",
+            limit=5000,
+        )
+        derivative_id_by_key = {
+            str(row.get("cluster_key")): str(row.get("id"))
+            for row in derivative_clusters
+            if row.get("cluster_key") and row.get("id")
+        }
+        indicator_rows = self._select_paginated(
+            "indicators",
+            columns="id,kind,normalized_value",
+            order="id.asc",
+            limit=20000,
+        )
+        indicator_id_by_key = {
+            "{}|{}".format(row.get("kind"), row.get("normalized_value")): str(
+                row.get("id")
+            )
+            for row in indicator_rows
+            if row.get("id") and row.get("kind") and row.get("normalized_value")
+        }
+
+        claimed_existing_ids: set[str] = set()
+        campaign_count = 0
+        membership_count = 0
+        campaign_indicator_count = 0
+        missing_indicator_count = 0
+
+        for cluster in clusters:
+            desired_key = str(cluster.get("campaign_key") or cluster.get("cluster_id"))
+            shared_keys = sorted(set(cluster.get("shared_indicator_keys") or []))
+            existing = existing_by_key.get(desired_key)
+
+            # If the preferred anchor changes after new evidence arrives, reuse a
+            # prior campaign that overlaps on another shared indicator. This keeps
+            # analyst identity stable across component growth and merges.
+            if existing is None:
+                candidates: List[tuple[int, int, str, Dict[str, Any]]] = []
+                shared_set = set(shared_keys)
+                for row in existing_campaigns:
+                    row_id = str(row.get("id") or "")
+                    if not row_id or row_id in claimed_existing_ids:
+                        continue
+                    metadata = dict(row.get("metadata") or {})
+                    previous_keys = set(metadata.get("shared_indicator_keys") or [])
+                    previous_keys.add(str(row.get("anchor_indicator_key") or ""))
+                    overlap = len(shared_set.intersection(previous_keys))
+                    if not overlap or str(row.get("status") or "") == "dismissed":
+                        continue
+                    candidates.append(
+                        (
+                            1 if row.get("analyst_confirmed") else 0,
+                            overlap,
+                            str(row.get("updated_at") or ""),
+                            dict(row),
+                        )
+                    )
+                if candidates:
+                    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+                    existing = candidates[0][3]
+
+            stable_key = str((existing or {}).get("campaign_key") or desired_key)
+            anchor_key = str(
+                (existing or {}).get("anchor_indicator_key")
+                or cluster.get("anchor_indicator_key")
+            )
+            existing_status = str((existing or {}).get("status") or "provisional")
+            metadata = dict((existing or {}).get("metadata") or {})
+            generate_label = not str((existing or {}).get("label") or "").strip()
+            metadata.update(
+                {
+                    "source_algorithm": "strong_indicator_components_v3_scam_only",
+                    "source_cluster_key": desired_key,
+                    "anchor_indicator_key": cluster.get("anchor_indicator_key"),
+                    "shared_indicator_keys": shared_keys,
+                    "category_counts": cluster.get("category_counts") or [],
+                }
+            )
+            if generate_label:
+                metadata["label_source"] = "generated"
+            campaign_payload: Dict[str, Any] = {
+                "campaign_key": stable_key,
+                "anchor_indicator_key": anchor_key,
+                "source_cluster_id": derivative_id_by_key.get(desired_key),
+                "is_active": existing_status != "dismissed",
+                "risk_score": round(
+                    int(cluster.get("maximum_severity") or 0)
+                    + min(int(cluster.get("document_count") or 0), 10) * 0.2,
+                    4,
+                ),
+                "document_count": int(cluster.get("document_count") or 0),
+                "indicator_count": len(cluster.get("indicator_keys") or []),
+                "maximum_severity": int(cluster.get("maximum_severity") or 0),
+                "average_confidence": float(cluster.get("average_confidence") or 0),
+                "scam_types": cluster.get("scam_types") or [],
+                "bank_roles": cluster.get("bank_roles") or [],
+                "shared_indicator_keys": shared_keys,
+                "first_seen_at": cluster.get("first_seen_at"),
+                "last_seen_at": cluster.get("last_seen_at"),
+                "metadata": metadata,
+            }
+            if generate_label:
+                campaign_payload["label"] = _campaign_label(
+                    anchor_key, cluster.get("scam_types") or []
+                )
+            rows = self.rest.upsert(
+                "campaigns", campaign_payload, on_conflict="campaign_key"
+            )
+            if not rows:
+                continue
+            campaign = dict(rows[0])
+            campaign_id = str(campaign["id"])
+            claimed_existing_ids.add(campaign_id)
+            campaign_count += 1
+            member_active = str(campaign.get("status") or existing_status) != "dismissed"
+
+            # Refresh one campaign at a time. Existing campaigns remain live
+            # until their replacement is ready, so an interrupted global run
+            # cannot blank or partially repopulate the served registry.
+            if prune:
+                self.rest.update(
+                    "campaign_documents",
+                    {"is_active": False},
+                    {
+                        "campaign_id": "eq." + campaign_id,
+                        "analyst_confirmed": "eq.false",
+                    },
+                )
+                self.rest.update(
+                    "campaign_indicators",
+                    {"is_active": False},
+                    {"campaign_id": "eq." + campaign_id, "is_active": "eq.true"},
+                )
+
+            memberships = list(cluster.get("memberships") or [])
+            if memberships:
+                member_rows = [
+                    {
+                        "campaign_id": campaign_id,
+                        "document_id": str(item.get("document_id")),
+                        "membership_score": float(item.get("membership_score") or 0),
+                        "reasons": item.get("reasons") or [],
+                        "is_active": member_active,
+                    }
+                    for item in memberships
+                    if item.get("document_id")
+                ]
+                if member_rows:
+                    self.rest.upsert(
+                        "campaign_documents",
+                        member_rows,
+                        on_conflict="campaign_id,document_id",
+                    )
+                    membership_count += len(member_rows)
+
+            reason_by_key: Dict[str, List[Dict[str, Any]]] = {}
+            for membership in memberships:
+                for reason in membership.get("reasons") or []:
+                    key = str(reason.get("indicator_key") or "")
+                    if key and reason not in reason_by_key.setdefault(key, []):
+                        reason_by_key[key].append(dict(reason))
+            campaign_indicator_rows: List[Dict[str, Any]] = []
+            materialized_indicator_keys = list(shared_keys)
+            if anchor_key not in materialized_indicator_keys:
+                materialized_indicator_keys.append(anchor_key)
+            for key in materialized_indicator_keys:
+                indicator_id = indicator_id_by_key.get(key)
+                if not indicator_id:
+                    missing_indicator_count += 1
+                    continue
+                reasons = reason_by_key.get(key) or []
+                weight = max(
+                    (float(reason.get("strength") or 0) for reason in reasons),
+                    default=1.0 if key == anchor_key else 0.5,
+                )
+                campaign_indicator_rows.append(
+                    {
+                        "campaign_id": campaign_id,
+                        "indicator_id": indicator_id,
+                        "role": "anchor" if key == anchor_key else "shared",
+                        "weight": min(1.0, max(0.0, weight)),
+                        "reasons": reasons,
+                        "is_active": member_active,
+                    }
+                )
+            if campaign_indicator_rows:
+                self.rest.upsert(
+                    "campaign_indicators",
+                    campaign_indicator_rows,
+                    on_conflict="campaign_id,indicator_id",
+                )
+                campaign_indicator_count += len(campaign_indicator_rows)
+
+        if prune:
+            for row in existing_campaigns:
+                campaign_id = str(row.get("id") or "")
+                if (
+                    not campaign_id
+                    or campaign_id in claimed_existing_ids
+                    or row.get("analyst_confirmed") is True
+                ):
+                    continue
+                self.rest.update(
+                    "campaign_documents",
+                    {"is_active": False},
+                    {
+                        "campaign_id": "eq." + campaign_id,
+                        "analyst_confirmed": "eq.false",
+                    },
+                )
+                self.rest.update(
+                    "campaign_indicators",
+                    {"is_active": False},
+                    {"campaign_id": "eq." + campaign_id, "is_active": "eq.true"},
+                )
+                self.rest.update(
+                    "campaigns",
+                    {"is_active": False},
+                    {
+                        "id": "eq." + campaign_id,
+                        "analyst_confirmed": "eq.false",
+                    },
+                )
+
+        return {
+            "campaigns": campaign_count,
+            "campaign_documents": membership_count,
+            "campaign_indicators": campaign_indicator_count,
+            "missing_indicators": missing_indicator_count,
+        }
 
     def list_anomalies(
         self, limit: int = 200, *, active_only: bool = True

@@ -8,12 +8,14 @@ classified documents into three JSON/SQL-friendly outputs:
 * evidence-backed anomaly flags for high severity, repeated indicators, and
   large connected components (``burst_size``).
 
-The current input contract does not include a timestamp, so ``burst_size`` is
-deliberately a graph-size signal rather than a temporal velocity signal.
+Optional first/last-seen timestamps are carried into campaign output, while
+``burst_size`` remains a graph-size signal rather than temporal velocity.
 """
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import Counter, defaultdict
 from typing import Any, DefaultDict, Dict, Iterable, List, Mapping, Sequence, Tuple
 
@@ -32,9 +34,9 @@ DEFAULT_BURST_SIZE_THRESHOLD = 3
 CAMPAIGN_ELIGIBLE_CATEGORIES = frozenset({"scam_report", "impersonation_abuse"})
 CAMPAIGN_MINIMUM_CONFIDENCE = 0.6
 
-# Only identifiers that plausibly persist across multiple posts are allowed to
-# create campaign edges. Contextual values such as a URL, person name, payment
-# method, or amount remain useful metrics but are too noisy for clustering.
+# Only durable identifiers that plausibly persist across multiple scam records
+# are allowed to create campaign edges. Free-form message text remains useful
+# evidence, but cannot form or anchor a campaign by itself.
 STRONG_CLUSTER_INDICATOR_TYPES = frozenset(
     {
         "bank_account",
@@ -45,7 +47,87 @@ STRONG_CLUSTER_INDICATOR_TYPES = frozenset(
         "qr_payload",
         "transaction_reference",
         "media_hash",
-        "message_template",
+    }
+)
+
+# Type-level reliability is used both to choose a deterministic campaign anchor
+# and to explain membership scores. A single exact account, transaction, QR, or
+# media match is stronger than a reusable message template or domain.
+CLUSTER_INDICATOR_WEIGHTS = {
+    "bank_account": 0.98,
+    "phone": 0.95,
+    "email": 0.90,
+    "domain": 0.80,
+    "social_account": 0.85,
+    "qr_payload": 0.98,
+    "transaction_reference": 0.98,
+    "media_hash": 0.98,
+}
+
+_GENERIC_SOCIAL_TOKENS = frozenset(
+    {
+        "account",
+        "app",
+        "facebook",
+        "fanpage",
+        "fb",
+        "com",
+        "http",
+        "https",
+        "id",
+        "instagram",
+        "messenger",
+        "me",
+        "net",
+        "official",
+        "page",
+        "profile",
+        "reddit",
+        "social",
+        "tai",
+        "khoan",
+        "telegram",
+        "threads",
+        "tiktok",
+        "twitter",
+        "user",
+        "username",
+        "whatsapp",
+        "www",
+        "x",
+        "youtube",
+        "zalo",
+    }
+)
+
+_GENERIC_SOCIAL_DOMAINS = frozenset(
+    {
+        "facebook.com",
+        "fb.com",
+        "instagram.com",
+        "reddit.com",
+        "t.me",
+        "telegram.me",
+        "threads.com",
+        "threads.net",
+        "tiktok.com",
+        "twitter.com",
+        "whatsapp.com",
+        "x.com",
+        "youtube.com",
+        "zalo.me",
+    }
+)
+
+_GENERIC_PAYLOAD_VALUES = frozenset(
+    {
+        "none",
+        "not available",
+        "not found",
+        "qr",
+        "qr code",
+        "unknown",
+        "unreadable",
     }
 )
 
@@ -66,6 +148,14 @@ def _bounded_int(value: Any, lower: int, upper: int, default: int) -> int:
     return max(lower, min(upper, number))
 
 
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "y"}
+
+
 def _average(values: Iterable[float]) -> float:
     numbers = list(values)
     if not numbers:
@@ -77,6 +167,99 @@ def _indicator_key(kind: str, normalized_value: str) -> str:
     """Return a stable, human-readable graph key for an indicator."""
 
     return "{}|{}".format(kind, normalized_value)
+
+
+def _ascii_tokens(value: Any) -> List[str]:
+    folded = unicodedata.normalize("NFKD", str(value or ""))
+    ascii_value = "".join(
+        character for character in folded if not unicodedata.combining(character)
+    )
+    return re.findall(r"[a-z0-9]+", ascii_value.casefold())
+
+
+def _is_valid_cluster_indicator(indicator: Mapping[str, Any]) -> bool:
+    """Return whether a normalized indicator is safe to create a campaign edge.
+
+    Storage and metrics deliberately retain every normalized indicator. This
+    stricter validation is applied only to graph edges, where a hallucinated
+    bank name labelled as an account or a platform name labelled as a social
+    handle would otherwise merge many unrelated reports.
+    """
+
+    kind = str(indicator.get("type") or "")
+    value = str(indicator.get("normalized_value") or "").strip()
+    if kind not in STRONG_CLUSTER_INDICATOR_TYPES or not value:
+        return False
+
+    if kind == "bank_account":
+        # Vietnamese account numbers are numeric. Six through twenty digits
+        # covers the bank formats in the demo while rejecting BIDV/TECHCOMBANK
+        # and other prose accidentally extracted as account numbers.
+        return bool(re.fullmatch(r"\d{6,20}", value))
+
+    if kind == "phone":
+        # Normalization converts +84 to the domestic leading-zero form. Accept
+        # current Vietnamese mobile prefixes and fixed-line numbers only.
+        return bool(re.fullmatch(r"0(?:[35789]\d{8}|2\d{8,9})", value))
+
+    if kind == "email":
+        return bool(
+            re.fullmatch(
+                r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+",
+                value.casefold(),
+            )
+        )
+
+    if kind == "domain":
+        lowered = value.casefold().removeprefix("www.")
+        return (
+            lowered not in _GENERIC_SOCIAL_DOMAINS
+            and bool(re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z0-9-]{2,}", lowered))
+        )
+
+    if kind == "social_account":
+        if any(character.isspace() for character in value):
+            return False
+        tokens = set(_ascii_tokens(value))
+        if not tokens or tokens.issubset(_GENERIC_SOCIAL_TOKENS):
+            return False
+        lowered = value.casefold().strip("@ /")
+        lowered = re.sub(r"^(?:https?://)?(?:www\.)?", "", lowered).rstrip("/")
+        if lowered in _GENERIC_SOCIAL_DOMAINS:
+            return False
+        if "/" in lowered:
+            host, _, path = lowered.partition("/")
+            return bool(
+                path
+                and host in _GENERIC_SOCIAL_DOMAINS
+                and re.fullmatch(r"[a-z0-9._~!$&'()*+,;=:@%/-]{2,256}", path)
+            )
+        return bool(re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,63}", lowered))
+
+    if kind == "qr_payload":
+        return value.casefold() not in _GENERIC_PAYLOAD_VALUES and len(value) >= 4
+
+    if kind == "transaction_reference":
+        return (
+            bool(re.fullmatch(r"[A-Z0-9]{6,64}", value.upper()))
+            and any(character.isdigit() for character in value)
+            and len(set(value)) > 1
+        )
+
+    if kind == "media_hash":
+        return bool(re.fullmatch(r"[0-9a-f]{16,128}", value.casefold()))
+
+    return False
+
+
+def _membership_score(reasons: Sequence[Mapping[str, Any]]) -> float:
+    """Combine independent indicator contributions into a bounded score."""
+
+    unexplained_probability = 1.0
+    for reason in reasons:
+        contribution = _bounded_float(reason.get("contribution"), 0.0, 1.0, 0.0)
+        unexplained_probability *= 1.0 - contribution
+    return round(1.0 - unexplained_probability, 4)
 
 
 def _normalize_document(document: Mapping[str, Any]) -> Dict[str, Any]:
@@ -107,6 +290,9 @@ def _normalize_document(document: Mapping[str, Any]) -> Dict[str, Any]:
         normalized = normalize_indicator(candidate)
         if not normalized:
             continue
+        normalized["evidence_quote"] = collapse_whitespace(
+            raw_indicator.get("evidence_quote")
+        )
         key = _indicator_key(normalized["type"], normalized["normalized_value"])
         previous = indicators_by_key.get(key)
         if previous is None or normalized["confidence"] > previous["confidence"]:
@@ -125,10 +311,20 @@ def _normalize_document(document: Mapping[str, Any]) -> Dict[str, Any]:
         )
 
     confidence = _bounded_float(document.get("confidence"), 0.0, 1.0, 0.0)
+    specific_case = _as_bool(document.get("specific_case"))
+    first_seen_at = collapse_whitespace(
+        document.get("first_seen_at") or document.get("first_seen")
+    ) or None
+    last_seen_at = collapse_whitespace(
+        document.get("last_seen_at") or document.get("last_seen")
+    ) or None
     return {
         "document_id": document_id,
         "category": category,
         "confidence": confidence,
+        "specific_case": specific_case,
+        "first_seen_at": first_seen_at,
+        "last_seen_at": last_seen_at,
         "severity": _bounded_int(document.get("severity"), 0, 5, 0),
         "scam_types": normalized_labels(document.get("scam_types")),
         "bank_roles": normalized_labels(document.get("bank_roles")),
@@ -137,11 +333,12 @@ def _normalize_document(document: Mapping[str, Any]) -> Dict[str, Any]:
         "cluster_indicator_keys": sorted(
             key
             for key, indicator in indicators_by_key.items()
-            if indicator["type"] in STRONG_CLUSTER_INDICATOR_TYPES
+            if _is_valid_cluster_indicator(indicator)
         ),
         "is_campaign_eligible": (
             category in CAMPAIGN_ELIGIBLE_CATEGORIES
             and confidence >= CAMPAIGN_MINIMUM_CONFIDENCE
+            and specific_case
         ),
     }
 
@@ -349,12 +546,84 @@ def _cluster_documents(prepared: Sequence[Mapping[str, Any]]) -> List[Dict[str, 
         shared_indicator_keys = sorted(
             key for key, count in key_counts.items() if count > 1
         )
+        # Every linked component has at least one repeated edge. Prefer the
+        # strongest indicator type, then the one supported by more documents,
+        # with the normalized key as a deterministic final tie-breaker.
+        anchor_indicator_key = min(
+            shared_indicator_keys,
+            key=lambda key: (
+                -CLUSTER_INDICATOR_WEIGHTS.get(key.split("|", 1)[0], 0.0),
+                -key_counts[key],
+                key,
+            ),
+        )
+        campaign_key = "campaign_{}".format(
+            stable_hash({"anchor_indicator_key": anchor_indicator_key})[:16]
+        )
+
+        memberships: List[Dict[str, Any]] = []
+        for document in members:
+            indicators_by_key = {
+                _indicator_key(
+                    indicator["type"], indicator["normalized_value"]
+                ): indicator
+                for indicator in document["indicators"]
+            }
+            reasons: List[Dict[str, Any]] = []
+            for key in sorted(
+                set(document["cluster_indicator_keys"]).intersection(
+                    shared_indicator_keys
+                )
+            ):
+                indicator = indicators_by_key[key]
+                indicator_type = str(indicator["type"])
+                strength = CLUSTER_INDICATOR_WEIGHTS[indicator_type]
+                indicator_confidence = _bounded_float(
+                    indicator.get("confidence"), 0.0, 1.0, 1.0
+                )
+                contribution = round(strength * indicator_confidence, 4)
+                reason = {
+                    "reason_type": "shared_strong_indicator",
+                    "indicator_key": key,
+                    "indicator_type": indicator_type,
+                    "normalized_value": indicator["normalized_value"],
+                    "shared_document_count": key_counts[key],
+                    "strength": strength,
+                    "indicator_confidence": indicator_confidence,
+                    "contribution": contribution,
+                    "evidence_source": indicator.get("evidence_source") or "unknown",
+                }
+                if indicator.get("evidence_quote"):
+                    reason["evidence_quote"] = indicator["evidence_quote"]
+                reasons.append(reason)
+            memberships.append(
+                {
+                    "document_id": document["document_id"],
+                    "membership_score": _membership_score(reasons),
+                    "reasons": reasons,
+                    "first_seen_at": document.get("first_seen_at"),
+                    "last_seen_at": document.get("last_seen_at"),
+                }
+            )
+
+        first_seen_values = sorted(
+            document["first_seen_at"]
+            for document in members
+            if document.get("first_seen_at")
+        )
+        last_seen_values = sorted(
+            document["last_seen_at"]
+            for document in members
+            if document.get("last_seen_at")
+        )
         category_counts = Counter(document["category"] for document in members)
         clusters.append(
             {
-                "cluster_id": "cluster_{}".format(
-                    stable_hash({"document_ids": document_ids})[:16]
-                ),
+                # cluster_id is retained for compatibility with current callers;
+                # both fields now use the stable indicator-anchored campaign key.
+                "cluster_id": campaign_key,
+                "campaign_key": campaign_key,
+                "anchor_indicator_key": anchor_indicator_key,
                 "document_count": len(document_ids),
                 "document_indicator_edge_count": sum(key_counts.values()),
                 "is_linked": len(document_ids) > 1,
@@ -383,8 +652,11 @@ def _cluster_documents(prepared: Sequence[Mapping[str, Any]]) -> List[Dict[str, 
                     }
                 ),
                 "document_ids": document_ids,
+                "memberships": memberships,
                 "indicator_keys": indicator_keys,
                 "shared_indicator_keys": shared_indicator_keys,
+                "first_seen_at": first_seen_values[0] if first_seen_values else None,
+                "last_seen_at": last_seen_values[-1] if last_seen_values else None,
                 "evidence_document_ids": document_ids,
                 "evidence_indicator_keys": shared_indicator_keys,
             }
@@ -569,6 +841,7 @@ __all__ = [
     "DEFAULT_REPEATED_INDICATOR_THRESHOLD",
     "CAMPAIGN_ELIGIBLE_CATEGORIES",
     "CAMPAIGN_MINIMUM_CONFIDENCE",
+    "CLUSTER_INDICATOR_WEIGHTS",
     "STRONG_CLUSTER_INDICATOR_TYPES",
     "analyze_documents",
     "build_analytics",

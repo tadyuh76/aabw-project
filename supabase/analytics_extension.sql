@@ -51,7 +51,7 @@ create table if not exists public.campaign_clusters (
     id uuid primary key default gen_random_uuid(),
     job_id uuid references public.crawl_jobs(id) on delete set null,
     cluster_key text not null unique,
-    algorithm text not null default 'strong_indicator_components_v1',
+    algorithm text not null default 'strong_indicator_components_v3_scam_only',
     label text,
     is_active boolean not null default true,
     risk_score numeric(8,4) not null default 0,
@@ -139,6 +139,9 @@ create index if not exists anomalies_active_score_idx
     on public.anomalies (is_active, score desc, detected_at desc);
 create index if not exists grounded_insights_created_idx
     on public.grounded_insights (created_at desc);
+
+alter table public.campaign_clusters
+    alter column algorithm set default 'strong_indicator_components_v3_scam_only';
 
 drop trigger if exists campaign_clusters_set_updated_at on public.campaign_clusters;
 create trigger campaign_clusters_set_updated_at before update on public.campaign_clusters

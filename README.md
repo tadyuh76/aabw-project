@@ -154,16 +154,19 @@ SerpAPI key. Use `--create-only` to inspect the jobs without running them.
 ## Campaign-link rules
 
 Metrics retain every valid classification and indicator. Automatic campaign edges are
-more conservative: only `scam_report` or `impersonation_abuse` documents with confidence
-at least `0.6` can link, and only through these strong identifiers:
+more conservative: only concrete (`specific_case=true`) `scam_report` or
+`impersonation_abuse` documents with confidence at least `0.6` can link, and only
+through these durable identifiers:
 
 ```text
 bank_account, phone, email, domain, social_account, qr_payload,
-transaction_reference, media_hash, message_template
+transaction_reference, media_hash
 ```
 
-URLs, money amounts, person/organization names and payment methods remain searchable
-evidence but never join campaigns automatically.
+URLs, money amounts, person/organization names, payment methods, and message templates
+remain searchable evidence but never join campaigns automatically. Global refreshes are
+authoritative: clusters that disappear after reclassification are deactivated immediately
+instead of surviving until a later backfill.
 
 ## Supabase schema
 
@@ -171,6 +174,8 @@ For a clean database, run these files in order in the Supabase SQL editor:
 
 1. `supabase/schema.sql`
 2. `supabase/analytics_extension.sql`
+3. `supabase/campaign_readiness.sql`
+4. `supabase/campaign_clustering_guardrails.sql`
 
 Core output tables:
 
@@ -179,7 +184,7 @@ Core output tables:
 | Control | `crawl_jobs`, `crawl_items`, `crawl_events` |
 | Evidence | `documents`, `document_discoveries`, `document_comments`, `media_evidence` |
 | AI output | `classifications`, `indicators`, `document_indicators`, `provider_usage` |
-| Live intelligence | `analysis_metrics`, `campaign_clusters`, `campaign_cluster_documents`, `anomalies`, `grounded_insights` |
+| Live intelligence | `analysis_metrics`, `campaign_clusters`, `campaign_cluster_documents`, `campaigns`, `campaign_documents`, `campaign_indicators`, `anomalies`, `grounded_insights` |
 
 ## Tests
 

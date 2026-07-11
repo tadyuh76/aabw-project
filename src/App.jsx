@@ -214,7 +214,6 @@ export function App() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportSent, setReportSent] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
-  const [evidenceFilter, setEvidenceFilter] = useState("ALL");
   const [isDragging, setIsDragging] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [fileError, setFileError] = useState("");
@@ -274,14 +273,10 @@ export function App() {
     [query, selected],
   );
 
-  const visibleEvidence = useMemo(
-    () => (selected.evidence || []).filter(([, , , source]) => evidenceFilter === "ALL" || source === evidenceFilter),
-    [evidenceFilter, selected],
-  );
+  const primaryEvidence = useMemo(() => (selected.evidence || []).slice(0, 3), [selected]);
   const isClear = ["clear", "no_match", "not_scam"].includes(selected.verdict);
   const isLive = Boolean(selected.live);
   const isLiveNoMatch = isLive && (selected.resultStatus === "not_scam" || selected.verdict === "no_match");
-  const isLiveNewCase = isLive && selected.resultStatus === "new_unmatched_case";
 
   function startDemoScan(item = selected, artifact) {
     const next = artifact ? { ...item, artifact } : item;
@@ -294,7 +289,6 @@ export function App() {
     setReportSent(false);
     setReportOpen(false);
     setBankOpen(false);
-    setEvidenceFilter("ALL");
     setPhase("scanning");
   }
 
@@ -323,7 +317,6 @@ export function App() {
     setReportSent(false);
     setReportOpen(false);
     setBankOpen(false);
-    setEvidenceFilter("ALL");
     setPhase("scanning");
 
     const minimumDelay = new Promise((resolve) => window.setTimeout(resolve, LIVE_SCAN_MINIMUM_MS));
@@ -430,7 +423,6 @@ export function App() {
     setReportOpen(false);
     setReportSent(false);
     setBankOpen(false);
-    setEvidenceFilter("ALL");
     setFileError("");
     releaseAttachments();
   }
@@ -673,217 +665,135 @@ export function App() {
               </button>
             </header>
 
-            <section className="verdict-strip">
-              <div className="compact-verdict">
+            <section className="decision-hero">
+              <div className="decision-copy">
                 <p className="verdict-kicker">
                   {isLiveNoMatch
                     ? <WarningCircle size={17} weight="regular" />
                     : isClear
                       ? <ShieldCheck size={17} weight="fill" />
-                      : <WarningCircle size={16} weight="fill" />}
+                      : <WarningCircle size={17} weight="fill" />}
                   {isLive
                     ? selected.resultKicker
                     : isClear ? "PROTOTYPE DEMO · NO KNOWN SIGNALS" : "PROTOTYPE DEMO · SCAM SIGNAL"}
                 </p>
-                <h2 id="check-result-heading">{isLive ? selected.resultHeading : isClear ? "Appears safe." : "Do not send the money."}</h2>
-                <p>{selected.subline}</p>
+                <h2 id="check-result-heading">{isLive ? selected.resultHeading : isClear ? "No known scam signal." : "Do not send money."}</h2>
+                <p className="decision-summary">{selected.subline}</p>
+
+                <div className="decision-actions">
+                  <button className="primary-action" onClick={isClear ? reset : () => setBankOpen(true)}>
+                    {isClear ? "CHECK ANOTHER TRANSFER" : "WHAT TO DO NOW"}
+                    {isClear ? <ArrowRight size={18} weight="bold" /> : <PhoneCall size={18} weight="bold" />}
+                  </button>
+                  <button className="secondary-action" onClick={isClear ? () => setBankOpen(true) : () => setReportOpen(true)}>
+                    {isClear ? "VERIFY ANOTHER WAY" : "REPORT ANONYMOUSLY"}
+                    {isClear ? <PhoneCall size={17} weight="bold" /> : <ArrowUpRight size={17} weight="bold" />}
+                  </button>
+                </div>
               </div>
 
-              <div className="compact-campaign">
-                <div className="confidence-score">
-                  <strong>{selected.confidence == null ? "—" : `${selected.confidence}%`}</strong>
-                  <span>{isLive ? "ANALYSIS CONF." : "CONFIDENCE"}</span>
-                </div>
-                <div>
-                  <span>{isLive ? selected.resultContextLabel : isClear ? "VERDICT CONFIDENCE" : "CAMPAIGN MATCH"}</span>
-                  <strong>{selected.campaign}</strong>
-                  <p>{selected.headline}</p>
-                </div>
-              </div>
-
-              {isClear && (
-                <div className="compact-actions">
-                  <button className="primary-action" onClick={reset}>
-                    CHECK ANOTHER TRANSFER <ArrowRight size={18} weight="bold" />
-                  </button>
-                  <button className="secondary-action" onClick={() => setBankOpen(true)}>
-                    {isLive ? "HOW TO VERIFY SAFELY" : "CONTACT SHINHAN IF UNSURE"} <PhoneCall size={17} weight="bold" />
-                  </button>
-                </div>
-              )}
-              {!isClear && (
-                <div className="compact-actions">
-                  <button className="primary-action" onClick={() => isLive ? setBankOpen(true) : reset()}>
-                    {isLive ? "HOW TO VERIFY SAFELY" : "CHECK SOMETHING ELSE"}
-                    {isLive ? <PhoneCall size={17} weight="bold" /> : <ArrowRight size={18} weight="bold" />}
-                  </button>
-                  <button
-                    className="secondary-action"
-                    onClick={() => setReportOpen(true)}
-                  >
-                    PREVIEW ANONYMOUS REPORT <ArrowUpRight size={17} weight="bold" />
-                  </button>
-                </div>
-              )}
-            </section>
-
-            <section className="impact-strip" aria-label={isLive ? "Live evidence summary" : "Campaign impact summary"}>
-              {selected.impact
-                ? selected.impact.map(([value, label]) => (
-                  <div key={label}><strong>{value}</strong><span>{label}</span></div>
-                ))
-                : (
-                  <>
-                    <div><strong>{selected.reportCount}</strong><span>{isClear ? "RECORDED CASES" : "RELATED REPORTS"}</span></div>
-                    <div><strong>{selected.victimCount}</strong><span>{isClear ? "LINKED VICTIMS" : "PAST VICTIMS"}</span></div>
-                    <div><strong>{selected.reportedLoss}</strong><span>REPORTED LOSS</span></div>
-                    <div><strong>{selected.sources.length}</strong><span>{isClear ? "SOURCE MATCHES" : "SOCIAL SOURCES"}</span></div>
-                    <div><strong>{selected.firstSeen}</strong><span>{isClear ? "ACCOUNT HISTORY" : "FIRST SEEN"}</span></div>
-                  </>
-                )}
-            </section>
-
-            <section className="result-content">
-              <section className="evidence-panel result-section">
-                <div className="panel-title">
-                  <span>{isLive
-                    ? isLiveNoMatch ? "WHAT LUNA ANALYZED" : isLiveNewCase ? "WHY IT WAS FLAGGED" : "WHY IT MATCHED"
-                    : isClear ? "WHAT WE CHECKED" : "WHY WE FLAGGED IT"}</span>
-                  <strong>{visibleEvidence.length} {isClear ? "CHECKS" : "SIGNALS"} · {selected.match}</strong>
-                </div>
-                <div className="evidence-inputs" aria-label="Filter evidence by input type">
-                  <button
-                    className={evidenceFilter === "ALL" ? "active" : ""}
-                    onClick={() => setEvidenceFilter("ALL")}
-                    aria-pressed={evidenceFilter === "ALL"}
-                  >
-                    ALL <span>{selected.evidence.length}</span>
-                  </button>
-                  {selected.inputs.map(([type, label]) => (
-                    <button
-                      className={evidenceFilter === type ? "active" : ""}
-                      key={`${type}-${label}`}
-                      onClick={() => setEvidenceFilter(type)}
-                      title={label}
-                      aria-pressed={evidenceFilter === type}
-                    >
-                      {type} <span>{selected.evidence.filter(([, , , source]) => source === type).length}</span>
-                    </button>
-                  ))}
-                </div>
-                <div className="evidence-list">
-                  {visibleEvidence.map(([kind, value, note, source, confidence], index) => (
-                    <motion.div
-                      className="evidence-row"
-                      key={`${source}-${kind}-${value}-${index}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 + index * 0.12 }}
-                    >
-                      <span>0{index + 1}</span>
-                      <p><em>{source}</em>{kind}</p>
-                      <div className="evidence-value"><strong>{value}</strong><small>{note}</small></div>
-                      <b>{confidence}</b>
-                    </motion.div>
-                  ))}
-                </div>
-                <p className="campaign-name">
+              <aside className="match-summary" aria-label="Result context">
+                <span>{isLive ? selected.resultContextLabel : isClear ? "CHECK RESULT" : "CAMPAIGN SIGNAL"}</span>
+                <strong>{selected.campaign}</strong>
+                <p>{selected.headline}</p>
+                <small>
                   {isLive
                     ? selected.analystConfirmed
-                      ? "KNOWN CAMPAIGN"
+                      ? `KNOWN CAMPAIGN · ${selected.campaignId}`
                       : selected.hasCampaign
-                        ? "POSSIBLE CAMPAIGN MATCH"
-                        : isLiveNewCase ? "UNMATCHED CASE" : "RESULT"
-                    : isClear ? "RESULT" : "KNOWN CAMPAIGN"} <span>{selected.campaign}</span>
-                </p>
-              </section>
+                        ? `POSSIBLE MATCH · ${selected.campaignId}`
+                        : "NO CAMPAIGN ASSIGNED"
+                    : isClear ? "NO EXACT CAMPAIGN MATCH" : `KNOWN CAMPAIGN · ${selected.campaignId}`}
+                </small>
+              </aside>
+            </section>
 
-              <section className="victim-panel result-section">
-                <div className="panel-title">
-                  <span>{isLive ? "PRIVACY & COVERAGE" : isClear ? "CASE HISTORY" : "PAST VICTIM REPORTS"}</span>
-                  <strong>{isLive ? "NO CUSTOMER DATA" : `${selected.victimCount} ${isClear ? "RECORDED CASES" : "LINKED CASES"}`}</strong>
-                </div>
-                {isLive ? (
-                  <div className="clear-empty">
-                    {isLiveNoMatch
-                      ? <WarningCircle size={28} weight="regular" />
-                      : <ShieldCheck size={28} weight="fill" />}
-                    <strong>{isLiveNoMatch
-                      ? "No specific scam case was identified."
-                      : isLiveNewCase ? "No existing campaign met the match threshold." : "No customer identities are shown."}</strong>
-                    <p>{isLiveNoMatch
-                      ? "If money or credentials are requested, still verify through an official channel."
-                      : isLiveNewCase ? "The concrete case stays unmatched instead of being forced into a campaign." : "Only matched campaign evidence and public source documents are shown."}</p>
-                  </div>
-                ) : selected.victims.length ? (
-                  <>
-                    <div className="victim-list">
-                      {selected.victims.map(([name, amount, story, meta]) => (
-                        <article key={`${name}-${meta}`}>
-                          <div className="victim-avatar">{name.split(" ")[1]}</div>
-                          <div className="victim-story">
-                            <span>{name} · IDENTITY HIDDEN</span>
-                            <strong>{story}</strong>
-                            <small>{meta}</small>
-                          </div>
-                          <em className={amount === "BLOCKED" ? "blocked" : ""}>{amount}</em>
-                        </article>
-                      ))}
+            <section className="essential-evidence" aria-labelledby="essential-evidence-title">
+              <div className="essential-heading">
+                <span id="essential-evidence-title">{isClear ? "WHAT WE CHECKED" : "THE SIGNALS THAT MATTER"}</span>
+                <strong>{primaryEvidence.length} {isClear ? "CHECKS" : "KEY SIGNALS"}</strong>
+              </div>
+              <div className="essential-list">
+                {primaryEvidence.map(([kind, value, note, source], index) => (
+                  <motion.article
+                    key={`${source}-${kind}-${value}-${index}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.18 + index * 0.1 }}
+                  >
+                    <span>0{index + 1}</span>
+                    <div>
+                      <small>{kind}</small>
+                      <strong>{value}</strong>
+                      <p>{note}</p>
                     </div>
-                    <p className="privacy-caption">PERSONAL DETAILS REMOVED BEFORE CAMPAIGN MATCHING</p>
-                  </>
-                ) : (
-                  <div className="clear-empty"><ShieldCheck size={28} weight="fill" /><strong>No cases recorded for this account.</strong><p>Checked against bank intelligence and anonymized customer reports.</p></div>
-                )}
-              </section>
+                  </motion.article>
+                ))}
+              </div>
+            </section>
 
-              <section className="source-panel result-section">
-                <div className="panel-title">
-                  <span>{isLive
-                    ? selected.hasCampaign ? "CAMPAIGN EVIDENCE" : isLiveNewCase ? "CAMPAIGN MATCHING" : "ANALYSIS RESULT"
-                    : isClear ? "MONITORED SOURCES" : "SIMILAR REPORTS FOUND"}</span>
-                  <strong>{isLive
-                    ? selected.sources.length
-                      ? `${selected.sources.length} SHOWN`
-                      : selected.hasCampaign ? "NO PUBLIC LINKS SHOWN" : "NO CAMPAIGN EVIDENCE"
-                    : isClear ? "NO MATCHES" : `${selected.reportCount} TOTAL SIGNALS`}</strong>
-                </div>
-                {selected.sources.length ? (
-                  <div className="source-list">
-                    {selected.sources.map(([platform, title, age, url]) => (
-                      <a
-                        className="source-link"
-                        href={url || undefined}
-                        key={`${platform}-${title}`}
-                        target={url ? "_blank" : undefined}
-                        rel={url ? "noreferrer" : undefined}
-                        aria-disabled={url ? undefined : true}
-                      >
-                        <article>
-                          <div className="source-icon"><Quotes size={16} weight="fill" /></div>
-                          <div><span>{platform}</span><strong>{title}</strong></div>
-                          <small>{age}</small>
-                          <ArrowUpRight size={15} />
-                        </article>
-                      </a>
+            <details className="analysis-details">
+              <summary>
+                <span>
+                  <strong>SEE FULL ANALYSIS</strong>
+                  <small>Campaign history, all evidence, and source coverage</small>
+                </span>
+                <Plus size={19} weight="bold" aria-hidden="true" />
+              </summary>
+
+              <div className="analysis-detail-body">
+                <section className="detail-block">
+                  <div className="detail-heading">
+                    <span>ALL EVIDENCE</span>
+                    <strong>{selected.evidence.length} ITEMS</strong>
+                  </div>
+                  <div className="detail-evidence-list">
+                    {selected.evidence.map(([kind, value, note, source], index) => (
+                      <article key={`${source}-${kind}-${value}-${index}`}>
+                        <span>0{index + 1}</span>
+                        <small>{source} · {kind}</small>
+                        <strong>{value}</strong>
+                        <p>{note}</p>
+                      </article>
                     ))}
                   </div>
-                ) : (
-                  <div className="clear-empty compact">
-                    {isLiveNoMatch ? <WarningCircle size={24} weight="regular" /> : <ShieldCheck size={24} weight="fill" />}
-                    <strong>{isLive
-                      ? selected.hasCampaign ? "Matched campaign evidence has no public link." : isLiveNewCase ? "No existing campaign was assigned." : "No campaign evidence was required."
-                      : "No matching public evidence found."}</strong>
-                    <p>{isLive
-                      ? selected.hasCampaign
-                        ? "The match still uses exact active campaign-indicator evidence."
-                        : isLiveNewCase ? "This concrete case remains unclustered for analyst review." : "Luna classified this as general or non-specific content."
-                        : "Nothing linked across monitored social sources."}</p>
+                </section>
+
+                <section className="detail-block">
+                  <div className="detail-heading">
+                    <span>{isClear ? "CHECK CONTEXT" : "CAMPAIGN CONTEXT"}</span>
+                    <strong>{isLive ? "LIVE" : "DEMO"}</strong>
                   </div>
-                )}
-                <p className="mock-disclaimer">{isLive ? "LUNA ANALYSIS · EXACT NORMALIZED INDICATOR MATCHING · NO EMBEDDINGS" : "DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS"}</p>
-              </section>
-            </section>
+                  <div className="context-facts">
+                    {selected.impact
+                      ? selected.impact.map(([value, label]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)
+                      : (
+                        <>
+                          <div><span>{isClear ? "RECORDED CASES" : "RELATED REPORTS"}</span><strong>{selected.reportCount}</strong></div>
+                          <div><span>{isClear ? "LINKED VICTIMS" : "PAST VICTIMS"}</span><strong>{selected.victimCount}</strong></div>
+                          <div><span>REPORTED LOSS</span><strong>{selected.reportedLoss}</strong></div>
+                          <div><span>{isClear ? "ACCOUNT HISTORY" : "FIRST SEEN"}</span><strong>{selected.firstSeen}</strong></div>
+                        </>
+                      )}
+                  </div>
+
+                  {selected.sources.length ? (
+                    <div className="detail-sources">
+                      {selected.sources.map(([platform, title, age, url]) => (
+                        <a href={url || undefined} key={`${platform}-${title}`} target={url ? "_blank" : undefined} rel={url ? "noreferrer" : undefined} aria-disabled={url ? undefined : true}>
+                          <Quotes size={15} weight="fill" />
+                          <span><small>{platform}</small><strong>{title}</strong></span>
+                          <em>{age}</em>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="detail-empty">No matching public campaign evidence is shown. A missing match does not prove the input is safe.</p>
+                  )}
+                  <p className="mock-disclaimer">{isLive ? "LUNA ANALYSIS · EXACT NORMALIZED INDICATOR MATCHING · NO EMBEDDINGS" : "DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS"}</p>
+                </section>
+              </div>
+            </details>
           </motion.section>
         )}
       </AnimatePresence>

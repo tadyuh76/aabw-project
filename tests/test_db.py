@@ -32,6 +32,70 @@ def test_rest_select_sends_service_headers_and_filters():
     assert request.url.params["limit"] == "5"
 
 
+def test_rest_select_paginated_reads_past_supabase_1000_row_cap():
+    source_rows = [{"id": f"doc-{index:04d}"} for index in range(2505)]
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        offset = int(request.url.params.get("offset", "0"))
+        requested_limit = int(request.url.params.get("limit", "1000"))
+        # Supabase's Data API returns at most 1,000 rows per request.
+        page_limit = min(requested_limit, 1000)
+        return httpx.Response(200, json=source_rows[offset : offset + page_limit])
+
+    rest = SupabaseRestClient(
+        "https://demo.supabase.co",
+        "secret",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    rows = rest.select_paginated(
+        "documents",
+        filters={"classification_status": "eq.completed"},
+        order="last_seen_at.desc",
+        limit=2505,
+    )
+
+    assert rows == source_rows
+    assert [request.url.params["offset"] for request in requests] == [
+        "0",
+        "1000",
+        "2000",
+    ]
+    assert [request.url.params["limit"] for request in requests] == [
+        "1000",
+        "1000",
+        "505",
+    ]
+    assert all(
+        request.url.params["order"] == "last_seen_at.desc,id.asc"
+        for request in requests
+    )
+
+
+def test_rest_select_paginated_deduplicates_overlapping_pages():
+    pages = {
+        0: [{"id": "1"}, {"id": "2"}, {"id": "3"}],
+        3: [{"id": "3"}, {"id": "4"}, {"id": "5"}],
+        6: [{"id": "6"}],
+    }
+
+    def handler(request):
+        offset = int(request.url.params.get("offset", "0"))
+        return httpx.Response(200, json=pages.get(offset, []))
+
+    rest = SupabaseRestClient(
+        "https://demo.supabase.co",
+        "secret",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    rows = rest.select_paginated(
+        "documents", order="created_at.desc", limit=6, page_size=3
+    )
+
+    assert [row["id"] for row in rows] == ["1", "2", "3", "4", "5", "6"]
+
+
 def test_rest_upsert_requests_merge_duplicates():
     captured = {}
 
@@ -111,3 +175,27 @@ def test_classification_is_linked_to_the_originating_job():
     assert captured["table"] == "classifications"
     assert captured["on_conflict"] == "document_id"
     assert captured["payload"]["job_id"] == "job-1"
+
+
+def test_global_analysis_documents_use_paginated_deterministic_selection():
+    captured = {}
+
+    class PaginatedRest:
+        def select_paginated(self, table, **kwargs):
+            captured.update(table=table, **kwargs)
+            return [{"id": "doc-1"}]
+
+    settings = Settings(
+        supabase_url="https://demo.supabase.co",
+        supabase_service_role_key="secret",
+        tinyfish_api_key="tiny",
+        groq_api_key="groq",
+    )
+    repository = SupabaseRepository(settings, rest=PaginatedRest())
+    rows = repository.list_global_analysis_documents(limit=5000)
+
+    assert rows == [{"id": "doc-1"}]
+    assert captured["table"] == "documents"
+    assert captured["limit"] == 5000
+    assert captured["order"] == "last_seen_at.desc,id.asc"
+    assert captured["filters"] == {"classification_status": "eq.completed"}

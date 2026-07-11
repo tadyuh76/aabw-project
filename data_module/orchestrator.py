@@ -941,7 +941,13 @@ class CrawlPipeline:
             documents.append(
                 {
                     "document_id": document_id,
+                    "first_seen_at": row.get("published_at")
+                    or row.get("first_seen_at"),
+                    "last_seen_at": row.get("last_seen_at")
+                    or row.get("published_at")
+                    or row.get("first_seen_at"),
                     "primary_category": classification.get("primary_category"),
+                    "specific_case": classification.get("specific_case"),
                     "confidence": classification.get("confidence"),
                     "severity": classification.get("severity"),
                     "scam_types": classification.get("scam_types") or [],
@@ -957,7 +963,11 @@ class CrawlPipeline:
         self.repository.update_job(job_id, current_stage="clustering")
         documents, _ = self._analytics_input()
         analytics = analyze_documents(documents)
-        counts = self.repository.replace_live_analytics(job_id, analytics)
+        counts = self.repository.replace_live_analytics(job_id, analytics, prune=True)
+        if hasattr(self.repository, "replace_stable_campaigns"):
+            counts.update(
+                self.repository.replace_stable_campaigns(job_id, analytics, prune=True)
+            )
         self.repository.add_event(
             job_id,
             "clustering",

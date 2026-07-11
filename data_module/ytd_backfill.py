@@ -285,6 +285,12 @@ async def _refresh_global_outputs(
     counts = repository.replace_live_analytics(
         provenance_job_id, analytics, prune=True
     )
+    if hasattr(repository, "replace_stable_campaigns"):
+        counts.update(
+            repository.replace_stable_campaigns(
+                provenance_job_id, analytics, prune=True
+            )
+        )
 
     context = {
         "metrics": repository.list_analysis_metrics(limit=100),
