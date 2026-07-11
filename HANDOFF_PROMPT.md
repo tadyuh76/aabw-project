@@ -8,9 +8,9 @@ You are continuing an existing Next.js hackathon prototype called **CheckVar 2.0
 
 ## Source of truth
 
-- Project folder: `/Users/bao/Documents/Codex/2026-07-11/main-feature-d-ng-social-listening/outputs/scamdna-demo`
+- Project folder: `/Users/bao/GitHub/aabw-project`
 - Local URL: `http://127.0.0.1:3000`
-- This folder is **not a Git repository**.
+- This folder is a Git repository. Inspect the active branch and working tree before editing.
 - Read the project `AGENTS.md` and `/Users/bao/.codex/memories/extensions/ad_hoc/notes/2026-06-22T16-15-00-ai-critical-path-workflow.md` before editing.
 - Before changing code, inspect the real files and check whether port 3000 is already serving this exact folder. Do not kill a server belonging to another worktree/project.
 
@@ -57,9 +57,9 @@ Current visual evidence:
 - `src/styles.css`: design system, landing, result, report modal, responsive rules.
 - `app/page.jsx`: Next.js page entry.
 - `app/layout.jsx`: metadata and document shell.
-- `package.json`: Next.js, React 19, Motion, Three.js, React Three Fiber, Drei and Phosphor dependencies.
+- `package.json`: Next.js, React 19, Motion, Three.js, React Three Fiber, and Phosphor dependencies.
 
-Raster experiments still exist under `public/assets`, but the active hero wave must remain code-driven. Do not delete assets, components, demo data, or business logic unless Bao explicitly approves that deletion.
+The active hero wave is code-driven. Do not delete components, demo data, or business logic unless Bao explicitly approves that deletion.
 
 ## Current verified state
 
