@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.npm-cache/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# macOS and logs
+.DS_Store
+*.log
