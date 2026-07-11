@@ -44,11 +44,7 @@ The product must create **evidence-backed friction before money leaves the user*
 - Avoid brutalism, terminal panels, perspective grids, dashboard cards, excessive icons, long copy, and generic cyber-security decoration.
 - Preserve reduced-motion support and mobile responsiveness.
 
-Current visual evidence:
-
-- Desktop: `qa-coded-wave-final.png`
-- Mobile: `qa-coded-wave-mobile.png`
-- QA history: `design-qa.md`
+Current QA notes are documented in `design-qa.md`. Recreate screenshots locally when visual verification is needed instead of committing generated QA images.
 
 ## Important code
 

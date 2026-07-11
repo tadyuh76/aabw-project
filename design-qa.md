@@ -9,13 +9,6 @@
 - Visual direction: premium minimal fintech, near-black surfaces, white text, and `#DB676D` as the single accent.
 - Hero: a pointer-inert React Three Fiber signal wave with a static reduced-motion frame. No raster hero asset is used.
 
-## Retained evidence
-
-- `qa-coded-wave-final.png`: final desktop landing state.
-- `qa-coded-wave-mobile.png`: final mobile landing state.
-- `qa-result-final.png`: settled campaign result state.
-- `qa-report-final.png`: privacy-redacted report preview.
-
 ## Verified critical path
 
 1. A customer types, pastes, drops, or selects suspicious evidence.
