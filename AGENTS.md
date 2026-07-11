@@ -17,4 +17,8 @@ When implementing from a selected generated mock, treat that image as the source
 - The selected landing direction is soft premium fintech: centered hero, rounded evidence capsule, and a smooth horizontal red signal wave. Do not return to brutalist boxes, terminal styling, or perspective grids.
 - Center `CHECKVAR 2.0` horizontally in the top navigation; treat it as the top brand anchor.
 - The header bar is removed in the selected implementation. `CHECKVAR 2.0` is the main centered hero title and `PROTECT EVERY TRANSFER.` is its subtitle.
+- Keep the persistent Moon/Sun light-dark theme toggle visible on both customer and bank flows; light mode is the default, and switching themes must not reset the current scan, result, filters, or campaign context.
 - Render the hero wave with React Three Fiber code, not a raster image. Keep it pointer-inert, GPU-friendly, and reduced-motion safe.
+- Keep bank-operations text readable at normal viewing distance: essential labels and metadata should not fall below 10px, while evidence values and explanatory copy should generally use 12–14px.
+- Structure `/bank` as an operations overview first: bank/scam-tactic filters, plain-language overall situation, prioritized scam campaigns, and a separate next-actions queue. Move technical relationship graphs into a specific-campaign investigation view instead of using them as the landing hierarchy.
+- For `/bank`, use readable chart-first analytics inspired by the supplied Brand Protection dashboard, keep a prominent `WHAT TO DO NEXT` action card near the top, and place the large scam-network constellation at the end with 2D as the investigation default and 3D as an optional exploration mode.
