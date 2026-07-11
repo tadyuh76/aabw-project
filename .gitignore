@@ -2,6 +2,15 @@ node_modules/
 .next/
 .npm-cache/
 
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/secrets.toml
+dist/
+build/
+
 # Local environment files
 .env
 .env.*
