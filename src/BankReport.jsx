@@ -139,6 +139,115 @@ const REVIEW_EDGE_BY_NODE = {
 };
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, contained: 4 };
+const SNAPSHOT_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  day: "numeric",
+  hour: "2-digit",
+  hour12: false,
+  minute: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+});
+const CAMPAIGN_ROLE_GUIDE = [
+  ["ANCHOR", "Immediate exact-key match"],
+  ["SHARED", "Strong repeated signal"],
+  ["SUPPORTING", "Weighted corroboration"],
+  ["CONTEXT", "Low-weight context"],
+];
+
+function formatSnapshotTime(value) {
+  return `${SNAPSHOT_TIME_FORMATTER.format(new Date(value)).toUpperCase()} UTC`;
+}
+
+function formatCampaignTime(value) {
+  return value ? formatSnapshotTime(value) : "NOT RECORDED";
+}
+
+function formatRegistryLabel(value) {
+  return value.replaceAll("_", " ").toUpperCase();
+}
+
+function LiveCampaignRegistry({ analytics }) {
+  const isLive = analytics.status === "live";
+  const campaigns = isLive ? analytics.campaigns : [];
+  const visibleCampaigns = campaigns.slice(0, 4);
+
+  return (
+    <section className="live-campaign-registry" aria-labelledby="live-campaign-registry-title">
+      <div className="overview-section-title">
+        <div>
+          <span id="live-campaign-registry-title">LIVE CAMPAIGN REGISTRY</span>
+          <small>Active, non-dismissed Supabase campaigns. The prototype workspace remains separate.</small>
+        </div>
+        <strong>
+          {isLive
+            ? `${campaigns.length.toLocaleString("en-US")} ACTIVE`
+            : analytics.status === "loading" ? "SYNCING" : "UNAVAILABLE"}
+        </strong>
+      </div>
+
+      <div className="registry-method">
+        <div className="registry-method-copy">
+          <span>MATCHING METHOD</span>
+          <strong>Deterministic exact normalized-indicator matching.</strong>
+          <p>Resolved values join active campaign indicators. Stored role and weight determine the result; no embeddings or semantic clustering are used.</p>
+          <div className="registry-thresholds">
+            <span>ANCHOR OR ≥0.85 <strong>CAMPAIGN MATCH</strong></span>
+            <span>≥0.55 <strong>POSSIBLE MATCH</strong></span>
+            <span>BELOW 0.55 <strong>STAYS UNMATCHED</strong></span>
+          </div>
+        </div>
+        <div className="registry-role-guide" aria-label="Campaign indicator roles">
+          {CAMPAIGN_ROLE_GUIDE.map(([role, description]) => (
+            <div key={role}><strong>{role}</strong><span>{description}</span></div>
+          ))}
+        </div>
+      </div>
+
+      {isLive && visibleCampaigns.length > 0 ? (
+        <div className="live-registry-list">
+          <div className="live-registry-head" aria-hidden="true">
+            <span>CAMPAIGN</span><span>EVIDENCE</span><span>RISK</span><span>LAST SEEN</span>
+          </div>
+          {visibleCampaigns.map((item) => (
+            <article key={item.id}>
+              <div className="live-registry-identity">
+                <span className={item.analystConfirmed ? "known" : "possible"}>
+                  {item.analystConfirmed ? "KNOWN CAMPAIGN" : "POSSIBLE CAMPAIGN MATCH"}
+                </span>
+                <strong>{item.label}</strong>
+                <small>{item.campaignKey}</small>
+              </div>
+              <div className="live-registry-evidence">
+                <strong>{item.documentCount.toLocaleString("en-US")} docs · {item.indicatorCount.toLocaleString("en-US")} indicators</strong>
+                <small>{item.scamTypes.length ? item.scamTypes.slice(0, 2).map(formatRegistryLabel).join(" · ") : "NO SCAM TYPE TAGGED"}</small>
+              </div>
+              <div className="live-registry-risk">
+                <strong>{item.riskScore.toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong>
+                <small>LEVEL {item.maximumSeverity} MAX · {(item.averageConfidence * 100).toFixed(0)}% AVG CONFIDENCE</small>
+              </div>
+              <div className="live-registry-last-seen">
+                <strong>{formatCampaignTime(item.lastSeenAt)}</strong>
+                <small>{item.status.toUpperCase()} · {item.bankRoles.length ? item.bankRoles.slice(0, 2).map(formatRegistryLabel).join(" · ") : "NO BANK ROLE TAGGED"}</small>
+              </div>
+            </article>
+          ))}
+          {campaigns.length > visibleCampaigns.length && (
+            <p className="live-registry-overflow">Showing the four highest-risk campaigns of {campaigns.length.toLocaleString("en-US")} active records.</p>
+          )}
+        </div>
+      ) : (
+        <div className="registry-state">
+          <strong>
+            {analytics.status === "loading"
+              ? "Syncing the campaign registry…"
+              : isLive ? "No active campaigns are materialized yet." : "The live campaign registry is unavailable."}
+          </strong>
+          <p>{isLive ? "Customer checks remain unmatched until active campaign evidence is available." : "No prototype campaign has been substituted here."}</p>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function csvCell(value) {
   let text = String(value ?? "");
@@ -150,7 +259,7 @@ export function BankReport() {
   const [theme, setTheme] = useState("light");
   const [bankFilter, setBankFilter] = useState("ALL BANKS");
   const [tacticFilter, setTacticFilter] = useState("ALL TACTICS");
-  const [timeRange, setTimeRange] = useState("30");
+  const [analytics, setAnalytics] = useState({ status: "loading" });
   const [selectedCampaignId, setSelectedCampaignId] = useState(campaign.id);
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [relationshipStatuses, setRelationshipStatuses] = useState(INITIAL_RELATIONSHIP_STATUSES);
@@ -164,6 +273,52 @@ export function BankReport() {
   const evidenceCloseRef = useRef(null);
   const caseDetailRef = useRef(null);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const timeout = window.setTimeout(() => controller.abort(), 7000);
+
+    async function syncAnalytics() {
+      try {
+        const response = await fetch("/api/bank-intelligence", {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        const payload = await response.json();
+        const snapshot = payload?.snapshot;
+        if (
+          !response.ok ||
+          payload?.status !== "live" ||
+          !snapshot ||
+          !Number.isSafeInteger(snapshot.documentsAnalyzed) ||
+          !Number.isSafeInteger(snapshot.scamEvidenceDocuments) ||
+          !Number.isSafeInteger(snapshot.uniqueIndicatorCount) ||
+          !Number.isSafeInteger(snapshot.activeCampaigns) ||
+          !Number.isSafeInteger(snapshot.linkedCampaigns) ||
+          !Number.isSafeInteger(snapshot.highRiskCampaigns) ||
+          Number.isNaN(new Date(snapshot.refreshedAt).getTime()) ||
+          !Array.isArray(payload.categories) ||
+          !Array.isArray(payload.severities) ||
+          !Array.isArray(payload.campaigns)
+        ) {
+          throw new Error("Invalid bank intelligence response");
+        }
+        if (active) setAnalytics(payload);
+      } catch {
+        if (active) setAnalytics({ status: "unavailable" });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    syncAnalytics();
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
+
   const filteredCampaigns = useMemo(
     () => overviewCampaigns
       .filter((item) => {
@@ -176,13 +331,20 @@ export function BankReport() {
   );
   const selectedCampaign = filteredCampaigns.find((item) => item.id === selectedCampaignId) || filteredCampaigns[0] || null;
   const filteredActions = overviewActions.filter((action) => filteredCampaigns.some((item) => item.id === action.campaignId));
-  const totalReports = filteredCampaigns.reduce((sum, item) => sum + item.reports, 0);
-  const totalExposure = filteredCampaigns.reduce((sum, item) => sum + item.exposureValue, 0);
-  const urgentCount = filteredActions.filter((action) => action.priority === "URGENT").length;
   const priorityAction = filteredActions[0] || null;
-  const priorityCampaign = priorityAction
-    ? overviewCampaigns.find((item) => item.id === priorityAction.campaignId)
-    : null;
+  const overviewMetrics = analytics.status === "live"
+    ? [
+      { value: analytics.snapshot.activeCampaigns, label: "ACTIVE CAMPAIGNS" },
+      { value: analytics.snapshot.scamEvidenceDocuments, label: "SCAM EVIDENCE DOCS" },
+      { value: analytics.snapshot.uniqueIndicatorCount, label: "UNIQUE INDICATORS" },
+      { value: analytics.snapshot.highRiskCampaigns, label: "HIGH-RISK CAMPAIGNS", urgent: true },
+    ]
+    : [
+      { value: "—", label: "ACTIVE CAMPAIGNS" },
+      { value: "—", label: "SCAM EVIDENCE DOCS" },
+      { value: "—", label: "UNIQUE INDICATORS" },
+      { value: "—", label: "HIGH-RISK CAMPAIGNS", urgent: true },
+    ];
 
   const selectNode = useCallback((id) => {
     setSelectedNode(id);
@@ -406,47 +568,44 @@ export function BankReport() {
                 {tacticOptions.map((option) => <option key={option}>{option}</option>)}
               </select>
             </label>
-            <label>
-              <span>TIME RANGE</span>
-              <select value={timeRange} onChange={(event) => setTimeRange(event.target.value)}>
-                <option value="7">LAST 7 DAYS</option>
-                <option value="30">LAST 30 DAYS</option>
-                <option value="90">LAST 90 DAYS</option>
-              </select>
-            </label>
           </div>
         </div>
 
         <div className="overview-priority-grid">
           <section className="situation-strip" aria-label="Overall scam situation">
             <div className="situation-copy">
-              <span>OVERALL SITUATION</span>
+              <span>GLOBAL DATA SNAPSHOT</span>
               <strong>
-                {filteredCampaigns.length
-                  ? `${filteredCampaigns.length} ${filteredCampaigns.length === 1 ? "campaign" : "campaigns"} in scope. ${urgentCount} require action now.`
-                  : "No campaigns match this bank and tactic combination."}
+                {analytics.status === "live"
+                  ? `${analytics.snapshot.activeCampaigns} active campaigns. ${analytics.snapshot.highRiskCampaigns} meet the risk score threshold.`
+                  : analytics.status === "loading"
+                    ? "Syncing the latest Supabase analytics snapshot…"
+                    : "Live analytics are unavailable."}
               </strong>
-              <p>{filteredCampaigns.length ? `QR-payment and identity-verification scams show the fastest growth in the last ${timeRange} days.` : "Change a filter to return to the active campaign view."}</p>
+              <p>
+                {analytics.status === "live"
+                  ? `Snapshot scope: ${analytics.snapshot.documentsAnalyzed.toLocaleString("en-US")} analyzed sources · ${analytics.snapshot.evidenceLinkCount.toLocaleString("en-US")} document-indicator links · ${(analytics.snapshot.averageConfidence * 100).toFixed(1)}% average confidence · as of ${formatSnapshotTime(analytics.snapshot.refreshedAt)}. Bank and tactic filters apply only to the prototype workspace.`
+                  : analytics.status === "loading"
+                    ? "Only data-backed totals will appear here."
+                    : "No mock totals have been substituted."}
+              </p>
             </div>
             <div className="overview-metrics">
-              <div><strong>{filteredCampaigns.length}</strong><span>CAMPAIGNS</span></div>
-              <div><strong>{totalReports}</strong><span>CUSTOMER REPORTS</span></div>
-              <div><strong>₫{totalExposure}M</strong><span>EST. EXPOSURE</span></div>
-              <div className="urgent"><strong>{urgentCount}</strong><span>URGENT ACTIONS</span></div>
+              {overviewMetrics.map((metric) => (
+                <div className={metric.urgent ? "urgent" : ""} key={metric.label}>
+                  <strong>{typeof metric.value === "number" ? metric.value.toLocaleString("en-US") : metric.value}</strong>
+                  <span>{metric.label}</span>
+                </div>
+              ))}
             </div>
           </section>
 
           <aside className="what-next-card">
-            <div className="what-next-kicker"><span>WHAT TO DO NEXT</span><strong>{priorityAction?.priority || "CLEAR"}</strong></div>
+            <div className="what-next-kicker"><span>WHAT TO DO NEXT</span><strong>PROTOTYPE</strong></div>
             {priorityAction ? (
               <>
                 <h2>{priorityAction.title}</h2>
                 <p>{priorityAction.reason}</p>
-                <div className="what-next-facts">
-                  <span><small>RISK</small><strong>{priorityCampaign?.exposure}</strong></span>
-                  <span><small>OWNER</small><strong>{priorityAction.owner}</strong></span>
-                  <span><small>DEADLINE</small><strong>{priorityAction.due}</strong></span>
-                </div>
                 <button onClick={() => runOverviewAction(priorityAction)}>{priorityAction.cta}<ArrowRight size={15} weight="bold" /></button>
               </>
             ) : (
@@ -455,16 +614,13 @@ export function BankReport() {
           </aside>
         </div>
 
-        <BankCharts
-          campaigns={filteredCampaigns}
-          timeRange={timeRange}
-          onBankSelect={setBankFilter}
-          onTacticSelect={setTacticFilter}
-        />
+        <BankCharts analytics={analytics} />
+
+        <LiveCampaignRegistry analytics={analytics} />
 
         <div className="activity-grid">
           <section className="activity-card">
-            <div className="overview-section-title"><div><span>RECENTLY DETECTED</span><small>Fresh activity in the current scope.</small></div><strong>LIVE</strong></div>
+            <div className="overview-section-title"><div><span>RECENTLY DETECTED</span><small>Prototype activity for interaction testing.</small></div><strong>DEMO</strong></div>
             <div className="activity-list">
               {filteredCampaigns.slice(0, 3).map((item) => (
                 <button key={item.id} onClick={() => viewCampaign(item.id)}>
@@ -476,7 +632,7 @@ export function BankReport() {
             </div>
           </section>
           <section className="activity-card">
-            <div className="overview-section-title"><div><span>ACTIONED & CONTAINED</span><small>Cases already moving toward resolution.</small></div><strong>UPDATED</strong></div>
+            <div className="overview-section-title"><div><span>ACTIONED & CONTAINED</span><small>Prototype workflow states; no live action table exists.</small></div><strong>DEMO</strong></div>
             <div className="activity-list">
               {overviewCampaigns.filter((item) => item.status === "MONITORING" || item.status === "CONTAINED").map((item) => (
                 <button key={item.id} onClick={() => viewCampaign(item.id)}>
@@ -492,8 +648,8 @@ export function BankReport() {
         <div className="overview-grid">
           <section className="campaign-list-section">
             <div className="overview-section-title">
-              <div><span>SCAM CAMPAIGNS</span><small>Prioritized by urgency, growth, and customer exposure.</small></div>
-              <strong>{filteredCampaigns.length} IN SCOPE</strong>
+              <div><span>PROTOTYPE CAMPAIGN WORKSPACE</span><small>Static campaign interactions are separate from the live aggregate snapshot above.</small></div>
+              <strong>DEMO DATA</strong>
             </div>
             {filteredCampaigns.length ? (
               <div className="campaign-list">
@@ -530,8 +686,8 @@ export function BankReport() {
 
           <aside className="next-actions-section">
             <div className="overview-section-title">
-              <div><span>NEXT ACTIONS</span><small>Decisions waiting for an owner.</small></div>
-              <strong>{filteredActions.length} OPEN</strong>
+              <div><span>NEXT ACTIONS</span><small>Static workflow demo; no live action table exists.</small></div>
+              <strong>DEMO DATA</strong>
             </div>
             <div className="next-action-list">
               {filteredActions.map((action) => {
@@ -736,7 +892,7 @@ export function BankReport() {
           </div>
         </section>}
 
-        <ScamConstellation campaigns={filteredCampaigns.length ? filteredCampaigns : overviewCampaigns} timeRange={timeRange} />
+        <ScamConstellation campaigns={filteredCampaigns.length ? filteredCampaigns : overviewCampaigns} timeRange="30" />
       </section>
 
       <AnimatePresence>

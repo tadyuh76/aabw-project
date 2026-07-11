@@ -41,6 +41,12 @@ OPENAI_REASONING_EFFORT=none
 DISCOVERY_PROVIDER=serpapi
 ```
 
+The Next.js customer and bank APIs require `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, and
+`OPENAI_MODEL=gpt-5.6-luna`. These are server-only variables: never rename or duplicate
+the service-role or OpenAI keys under a `NEXT_PUBLIC_*` name, and never commit their
+values.
+
 Start the two local processes:
 
 ```bash
@@ -70,6 +76,42 @@ without storing them in Supabase. A long-running worker reloads `.env` before ea
 Both Runs and Analytics can poll Supabase every three seconds. The global graph refreshes
 after every completed Fetch + Luna batch, so ingestion and cluster viewing happen at the
 same time.
+
+Run the customer and bank UI separately with `npm install && npm run dev`, then open
+<http://localhost:3000>.
+
+The Next.js bank overview reads `/api/bank-intelligence`, a server-only adapter over the
+current `analysis_metrics` snapshot and active `campaigns` rows. It exposes
+only validated aggregate counts and distributions; the service-role key and raw indicator
+values never reach the browser. Unsupported monetary exposure, time-series, customer,
+containment and workflow totals remain explicitly outside the live-data block.
+
+The home checker posts real customer input to `POST /api/check` as multipart form data.
+It accepts optional `text`, `url`, and one `image` screenshot or QR file, with at least
+one field required and an 8 MB image limit. Luna analyzes text and images directly using
+strict structured output; no separate OCR step is added. Classification is conservative:
+general scam-recovery advice, generic warnings, and legitimate account-opening
+commissions or referrals are not treated as concrete scams without case-specific
+evidence.
+
+The route normalizes eligible strong indicators and joins them exactly through active
+`campaign_indicators` to active, non-dismissed `campaigns`. It does not use embeddings or
+semantic clustering and never forces an input into a campaign. The response status is
+one of `matched_campaign`, `possible_match`, `new_unmatched_case`, or `not_scam`, with a
+normalized analysis, the winning campaign when present, up to five public evidence
+documents, exact matched reasons, and recommended actions. A campaign is shown to the
+customer as `KNOWN CAMPAIGN` only when `analyst_confirmed=true`; otherwise the UI says
+`POSSIBLE CAMPAIGN MATCH`. “No match” means only that the current snapshot has no
+qualifying exact campaign evidence, not that the input is safe.
+
+Bundled customer cases remain available only as an explicit demo fallback and still run
+through the existing idle → scanning → result → anonymous-report presentation. Real
+input never silently selects a demo fixture.
+
+The `/bank` admin screen presents a live campaign registry backed by the stable
+`campaigns` table, including exact normalized indicator roles and analyst-confirmation
+state. The older illustrative campaign workspace remains explicitly identified as a
+prototype; its sample values are not included in live campaign totals.
 
 ## Recommended fast defaults
 

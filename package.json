@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:frontend": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@phosphor-icons/react": "latest",
     "@react-three/fiber": "^9.6.1",
+    "@supabase/supabase-js": "^2.110.2",
     "d3-force": "^3.0.0",
     "motion": "latest",
     "next": "latest",
     "ogl": "^1.0.11",
+    "openai": "^6.46.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^3.9.2",

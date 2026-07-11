@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Strands from "./Strands.jsx";
+import { campaignCheckResultFromResponse } from "./campaignCheckResult.js";
 import {
   ArrowCounterClockwise,
   ArrowRight,
@@ -197,6 +198,12 @@ const SCAN_DETAILS = [
   "Cross-checking sources before the verdict",
 ];
 const SCAN_PROGRESS = [32, 68, 94];
+const LIVE_SCAN_MINIMUM_MS = 1400;
+
+function conciseArtifact(value, maximum = 86) {
+  const clean = String(value || "").replace(/\s+/g, " ").trim();
+  return clean.length > maximum ? `${clean.slice(0, maximum - 1)}…` : clean;
+}
 
 export function App() {
   const [theme, setTheme] = useState("light");
@@ -211,9 +218,12 @@ export function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [fileError, setFileError] = useState("");
+  const [scanMode, setScanMode] = useState("demo");
   const reduceMotion = useReducedMotion();
   const fileRef = useRef(null);
   const attachmentsRef = useRef([]);
+  const checkRequestRef = useRef(null);
+  const resultRef = useRef(null);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -221,14 +231,23 @@ export function App() {
 
   useEffect(() => () => {
     attachmentsRef.current.forEach((attachment) => URL.revokeObjectURL(attachment.preview));
+    checkRequestRef.current?.abort();
   }, []);
 
   useEffect(() => {
     if (phase !== "scanning") return;
-    const stepOne = window.setTimeout(() => setScanStep(1), 900);
-    const stepTwo = window.setTimeout(() => setScanStep(2), 1900);
-    const complete = window.setTimeout(() => setPhase("result"), 3200);
-    return () => [stepOne, stepTwo, complete].forEach(window.clearTimeout);
+    const stepOne = window.setTimeout(() => setScanStep(1), 450);
+    const stepTwo = window.setTimeout(() => setScanStep(2), 950);
+    const complete = scanMode === "demo"
+      ? window.setTimeout(() => setPhase("result"), 1700)
+      : null;
+    return () => [stepOne, stepTwo, complete].filter(Boolean).forEach(window.clearTimeout);
+  }, [phase, scanMode]);
+
+  useEffect(() => {
+    if (phase !== "result") return;
+    const focusResult = window.requestAnimationFrame(() => resultRef.current?.focus());
+    return () => window.cancelAnimationFrame(focusResult);
   }, [phase]);
 
   useEffect(() => {
@@ -243,7 +262,7 @@ export function App() {
       }
       if (document.activeElement?.tagName === "INPUT") return;
       const text = event.clipboardData?.getData("text/plain")?.trim();
-      if (text) runTextEvidence(text);
+      if (text) void runTextEvidence(text);
     }
 
     window.addEventListener("paste", pasteAnywhere);
@@ -251,20 +270,27 @@ export function App() {
   }, [phase]);
 
   const activeArtifact = useMemo(
-    () => (query.trim() ? query.trim() : selected.artifact),
+    () => conciseArtifact(query.trim() ? query.trim() : selected.artifact, 120),
     [query, selected],
   );
 
   const visibleEvidence = useMemo(
-    () => selected.evidence.filter(([, , , source]) => evidenceFilter === "ALL" || source === evidenceFilter),
+    () => (selected.evidence || []).filter(([, , , source]) => evidenceFilter === "ALL" || source === evidenceFilter),
     [evidenceFilter, selected],
   );
-  const isClear = selected.verdict === "clear";
+  const isClear = ["clear", "no_match", "not_scam"].includes(selected.verdict);
+  const isLive = Boolean(selected.live);
+  const isLiveNoMatch = isLive && (selected.resultStatus === "not_scam" || selected.verdict === "no_match");
+  const isLiveNewCase = isLive && selected.resultStatus === "new_unmatched_case";
 
-  function startScan(item = selected, artifact) {
+  function startDemoScan(item = selected, artifact) {
     const next = artifact ? { ...item, artifact } : item;
+    checkRequestRef.current?.abort();
     setSelected(next);
+    setQuery("");
     setScanStep(0);
+    setScanMode("demo");
+    setFileError("");
     setReportSent(false);
     setReportOpen(false);
     setBankOpen(false);
@@ -272,80 +298,119 @@ export function App() {
     setPhase("scanning");
   }
 
+  async function runLiveEvidence(rawText = "", attachment = attachmentsRef.current[0] || null) {
+    const cleanText = rawText.trim();
+    const artifact = cleanText
+      ? attachment ? `${conciseArtifact(cleanText, 74)} + ${attachment.file.name}` : cleanText
+      : attachment?.file.name || "";
+    if (!artifact) {
+      setFileError("Enter text, a URL, or attach a screenshot or QR image.");
+      return;
+    }
+    if (cleanText.length > 8000) {
+      setFileError("Keep text evidence under 8,000 characters and try again.");
+      return;
+    }
+
+    checkRequestRef.current?.abort();
+    const controller = new AbortController();
+    checkRequestRef.current = controller;
+    if (cleanText) setQuery(cleanText);
+    setSelected((current) => ({ ...current, artifact }));
+    setFileError("");
+    setScanStep(0);
+    setScanMode("live");
+    setReportSent(false);
+    setReportOpen(false);
+    setBankOpen(false);
+    setEvidenceFilter("ALL");
+    setPhase("scanning");
+
+    const minimumDelay = new Promise((resolve) => window.setTimeout(resolve, LIVE_SCAN_MINIMUM_MS));
+    try {
+      const formData = new FormData();
+      const defanged = cleanText.replace(/\[\.\]|\(\.\)|\{\.\}/gu, ".");
+      const looksLikeUrl = /^(?:(?:https?|hxxps?):\/\/|www\.)\S+$/iu.test(defanged) ||
+        /^(?:[\p{L}\p{N}-]+\.)+[\p{L}]{2,}(?:[/?#]|$)/u.test(defanged);
+      if (cleanText) formData.set(looksLikeUrl ? "url" : "text", cleanText);
+      if (attachment) formData.set("image", attachment.file, attachment.file.name);
+      const responsePromise = fetch("/api/check", {
+        method: "POST",
+        body: formData,
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const [response] = await Promise.all([responsePromise, minimumDelay]);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || payload.status === "error") {
+        const requestError = new Error(payload?.error?.message || "Live intelligence is temporarily unavailable.");
+        requestError.code = payload?.error?.code || (response.status < 500 ? "INVALID_INPUT" : "CHECK_UNAVAILABLE");
+        throw requestError;
+      }
+      if (checkRequestRef.current !== controller) return;
+      setSelected(campaignCheckResultFromResponse(payload, artifact));
+      releaseAttachments();
+      setPhase("result");
+    } catch (error) {
+      if (error?.name === "AbortError" || checkRequestRef.current !== controller) return;
+      setPhase("idle");
+      setFileError(
+        error?.message || "Live intelligence is temporarily unavailable. Please try again.",
+      );
+    } finally {
+      if (checkRequestRef.current === controller) checkRequestRef.current = null;
+    }
+  }
+
   function runTextEvidence(rawText) {
-    const artifact = rawText.trim();
-    const normalized = artifact.toLowerCase();
-    const mixedSignals = normalized.includes("mixed") || (
-      normalized.includes("qr") &&
-      (normalized.includes("http") || normalized.includes("verify") || normalized.includes("phone"))
-    );
-    const knownRecipient = normalized.includes("110-482-902184") || normalized.includes("known recipient");
-    const picked = knownRecipient
-      ? CASES[4]
-      : mixedSignals
-      ? CASES[3]
-      : normalized.includes("qr")
-      ? CASES[1]
-      : normalized.includes("viec") || normalized.includes("job")
-        ? CASES[2]
-        : CASES[0];
-    setQuery(artifact);
-    startScan(picked, artifact || picked.artifact);
+    return runLiveEvidence(rawText, attachmentsRef.current[0] || null);
   }
 
   function submitInput(event) {
     event.preventDefault();
-    if (!attachments.length) {
-      runTextEvidence(query || selected.artifact);
-      return;
-    }
-
-    const artifact = attachments.length > 1
-      ? `${attachments.length}-item evidence bundle`
-      : attachments[0].file.name;
-    const hasQr = attachments.some(({ file }) => file.name.toLowerCase().includes("qr"));
-    const picked = attachments.length > 1 || query.trim()
-      ? CASES[3]
-      : hasQr
-        ? CASES[1]
-        : CASES[0];
-    releaseAttachments();
-    startScan(picked, artifact);
+    void runLiveEvidence(query, attachments[0] || null);
   }
 
   function handleFiles(fileList) {
     const incomingFiles = Array.from(fileList || []);
-    const files = incomingFiles.filter((file) => file.type.startsWith("image/"));
+    const allowedTypes = new Set(["image/gif", "image/jpeg", "image/png", "image/webp"]);
+    const files = incomingFiles.filter((file) => allowedTypes.has(file.type.toLowerCase()));
     const rejectedCount = incomingFiles.length - files.length;
-    const validFiles = files.filter((file) => file.size <= 15 * 1024 * 1024);
-    const availableSlots = Math.max(0, 5 - attachments.length);
+    const validFiles = files.filter((file) => file.size <= 8 * 1024 * 1024);
+    const availableSlots = Math.max(0, 1 - attachmentsRef.current.length);
     const acceptedFiles = validFiles.slice(0, availableSlots);
     setFileError(
       rejectedCount
-        ? "Only image files can be attached."
+        ? "Use a PNG, JPEG, WebP, or GIF image."
         : validFiles.length < files.length
-          ? "Images must be 15 MB or smaller."
+          ? "The image must be 8 MB or smaller."
           : validFiles.length > availableSlots
-            ? "You can attach up to 5 images."
+            ? "Upload one screenshot or QR image at a time."
           : "",
     );
     if (!acceptedFiles.length) return;
 
-    setAttachments((current) => [
-      ...current,
-      ...acceptedFiles.map((file) => ({
-        id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
-        file,
-        preview: URL.createObjectURL(file),
-      })),
-    ]);
+    setAttachments((current) => {
+      const next = [
+        ...current,
+        ...acceptedFiles.map((file) => ({
+          id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+          file,
+          preview: URL.createObjectURL(file),
+        })),
+      ];
+      attachmentsRef.current = next;
+      return next;
+    });
   }
 
   function removeAttachment(id) {
     setAttachments((current) => {
       const target = current.find((attachment) => attachment.id === id);
       if (target) URL.revokeObjectURL(target.preview);
-      return current.filter((attachment) => attachment.id !== id);
+      const next = current.filter((attachment) => attachment.id !== id);
+      attachmentsRef.current = next;
+      return next;
     });
     setFileError("");
   }
@@ -358,12 +423,15 @@ export function App() {
   }
 
   function reset() {
+    checkRequestRef.current?.abort();
+    checkRequestRef.current = null;
     setPhase("idle");
     setQuery("");
     setReportOpen(false);
     setReportSent(false);
     setBankOpen(false);
     setEvidenceFilter("ALL");
+    setFileError("");
     releaseAttachments();
   }
 
@@ -403,7 +471,7 @@ export function App() {
           >
             <div className="wave-stage" aria-hidden="true">
               <Strands
-                colors={["#7A2630", "#B84450", "#DB676D", "#F08B90", "#FFC0C3"]}
+                colors={["#3f96f3"]}
                 count={5}
                 speed={0.38}
                 amplitude={1.28}
@@ -447,7 +515,7 @@ export function App() {
                   return;
                 }
                 const text = event.dataTransfer.getData("text/plain")?.trim();
-                if (text) runTextEvidence(text);
+                if (text) void runTextEvidence(text);
               }}
             >
               <div className={`scanner-field${attachments.length ? " has-attachments" : ""}`}>
@@ -486,8 +554,7 @@ export function App() {
                     ref={fileRef}
                     className="file-input"
                     type="file"
-                    accept="image/*"
-                    multiple
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     onChange={(event) => {
                       handleFiles(event.target.files);
                       event.target.value = "";
@@ -495,9 +562,14 @@ export function App() {
                   />
                   <input
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      if (fileError) setFileError("");
+                    }}
                     placeholder="Paste a suspicious link, number, or message"
                     aria-label="Suspicious evidence"
+                    aria-invalid={Boolean(fileError)}
+                    aria-describedby={fileError ? "scanner-help check-error" : "scanner-help"}
                   />
                   <button className="scan-button" type="submit">
                     CHECK NOW
@@ -505,15 +577,15 @@ export function App() {
                   </button>
                 </div>
               </div>
-              <p className="drop-helper">Drop, paste, or choose up to 5 screenshots · ⌘V anywhere</p>
-              {fileError && <p className="file-error" role="alert">{fileError}</p>}
+              <p className="drop-helper" id="scanner-help">Live Luna analysis for text, links, screenshots, and QR images · 8 MB maximum</p>
+              {fileError && <p className="file-error" id="check-error" role="alert">{fileError}</p>}
               <div className="demo-row">
                 <span>TRY A DEMO</span>
                 {CASES.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => startScan(item)}
+                    onClick={() => startDemoScan(item)}
                   >
                     {item.label}
                   </button>
@@ -540,7 +612,7 @@ export function App() {
             exit={{ opacity: 0, scale: 1.02 }}
           >
             <div className="scan-heading">
-              <p className="eyebrow">LIVE ANALYSIS</p>
+              <p className="eyebrow">{scanMode === "live" ? "LIVE INTELLIGENCE CHECK" : "PROTOTYPE DEMO"}</p>
               <p className="artifact-name">{activeArtifact}</p>
             </div>
             <div className="scan-stage">
@@ -549,10 +621,10 @@ export function App() {
                 <i />
                 <i />
               </div>
-              <div className="scan-card">
+              <div className="scan-card" role="status" aria-live="polite">
                 <div className="scan-status-row">
                   <span className="scan-live-dot" aria-hidden="true" />
-                  <span>ANALYZING EVIDENCE</span>
+                  <span>{scanMode === "live" ? "CHECKING LIVE EVIDENCE" : "PROTOTYPE DEMO · ANALYZING EVIDENCE"}</span>
                   <strong>{SCAN_PROGRESS[scanStep]}%</strong>
                 </div>
 
@@ -563,13 +635,20 @@ export function App() {
                   </div>
                 </div>
 
-                <div className="scan-progress" aria-hidden="true">
+                <div
+                  className="scan-progress"
+                  role="progressbar"
+                  aria-label="Evidence check progress"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow={SCAN_PROGRESS[scanStep]}
+                >
                   <motion.i
                     animate={{ width: `${SCAN_PROGRESS[scanStep]}%` }}
                     transition={{ duration: 0.45, ease: "easeOut" }}
                   />
                 </div>
-                <p className="scan-assurance">Your evidence stays private during this check.</p>
+                <p className="scan-assurance">This check does not write your input to the evidence database.</p>
               </div>
             </div>
           </motion.section>
@@ -579,35 +658,44 @@ export function App() {
           <motion.section
             className={`result-view${isClear ? " is-clear" : ""}`}
             key="result"
+            ref={resultRef}
+            tabIndex={-1}
+            aria-labelledby="check-result-heading"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             <header className="result-nav">
               <button className="result-brand" onClick={reset}>CHECKVAR <span>2.0</span></button>
-              <p>{isClear ? "CHECK RESULT" : "CAMPAIGN MATCH"} <span>{selected.campaignId}</span></p>
+              <p>{isLive ? "LIVE EVIDENCE" : isClear ? "CHECK RESULT" : "CAMPAIGN MATCH"} <span>{selected.campaignId}</span></p>
               <button className="new-check" onClick={reset}>
                 NEW CHECK <ArrowCounterClockwise size={15} weight="bold" />
               </button>
             </header>
 
-            <section className={`verdict-strip${isClear ? "" : " no-actions"}`}>
+            <section className="verdict-strip">
               <div className="compact-verdict">
                 <p className="verdict-kicker">
-                  {isClear ? <ShieldCheck size={17} weight="fill" /> : <WarningCircle size={16} weight="fill" />}
-                  {isClear ? "NO KNOWN SCAM SIGNALS" : "SCAM DETECTED"}
+                  {isLiveNoMatch
+                    ? <WarningCircle size={17} weight="regular" />
+                    : isClear
+                      ? <ShieldCheck size={17} weight="fill" />
+                      : <WarningCircle size={16} weight="fill" />}
+                  {isLive
+                    ? selected.resultKicker
+                    : isClear ? "PROTOTYPE DEMO · NO KNOWN SIGNALS" : "PROTOTYPE DEMO · SCAM SIGNAL"}
                 </p>
-                <h2>{isClear ? "Appears safe." : "Do not send the money."}</h2>
+                <h2 id="check-result-heading">{isLive ? selected.resultHeading : isClear ? "Appears safe." : "Do not send the money."}</h2>
                 <p>{selected.subline}</p>
               </div>
 
               <div className="compact-campaign">
                 <div className="confidence-score">
-                  <strong>{selected.confidence}%</strong>
-                  <span>CONFIDENCE</span>
+                  <strong>{selected.confidence == null ? "—" : `${selected.confidence}%`}</strong>
+                  <span>{isLive ? "ANALYSIS CONF." : "CONFIDENCE"}</span>
                 </div>
                 <div>
-                  <span>{isClear ? "VERDICT CONFIDENCE" : "CAMPAIGN MATCH"}</span>
+                  <span>{isLive ? selected.resultContextLabel : isClear ? "VERDICT CONFIDENCE" : "CAMPAIGN MATCH"}</span>
                   <strong>{selected.campaign}</strong>
                   <p>{selected.headline}</p>
                 </div>
@@ -619,30 +707,55 @@ export function App() {
                     CHECK ANOTHER TRANSFER <ArrowRight size={18} weight="bold" />
                   </button>
                   <button className="secondary-action" onClick={() => setBankOpen(true)}>
-                    CONTACT SHINHAN IF UNSURE <PhoneCall size={17} weight="bold" />
+                    {isLive ? "HOW TO VERIFY SAFELY" : "CONTACT SHINHAN IF UNSURE"} <PhoneCall size={17} weight="bold" />
+                  </button>
+                </div>
+              )}
+              {!isClear && (
+                <div className="compact-actions">
+                  <button className="primary-action" onClick={() => isLive ? setBankOpen(true) : reset()}>
+                    {isLive ? "HOW TO VERIFY SAFELY" : "CHECK SOMETHING ELSE"}
+                    {isLive ? <PhoneCall size={17} weight="bold" /> : <ArrowRight size={18} weight="bold" />}
+                  </button>
+                  <button
+                    className="secondary-action"
+                    onClick={() => setReportOpen(true)}
+                  >
+                    PREVIEW ANONYMOUS REPORT <ArrowUpRight size={17} weight="bold" />
                   </button>
                 </div>
               )}
             </section>
 
-            <section className="impact-strip" aria-label="Campaign impact summary">
-              <div><strong>{selected.reportCount}</strong><span>{isClear ? "RECORDED CASES" : "RELATED REPORTS"}</span></div>
-              <div><strong>{selected.victimCount}</strong><span>{isClear ? "LINKED VICTIMS" : "PAST VICTIMS"}</span></div>
-              <div><strong>{selected.reportedLoss}</strong><span>REPORTED LOSS</span></div>
-              <div><strong>{selected.sources.length}</strong><span>{isClear ? "SOURCE MATCHES" : "SOCIAL SOURCES"}</span></div>
-              <div><strong>{selected.firstSeen}</strong><span>{isClear ? "ACCOUNT HISTORY" : "FIRST SEEN"}</span></div>
+            <section className="impact-strip" aria-label={isLive ? "Live evidence summary" : "Campaign impact summary"}>
+              {selected.impact
+                ? selected.impact.map(([value, label]) => (
+                  <div key={label}><strong>{value}</strong><span>{label}</span></div>
+                ))
+                : (
+                  <>
+                    <div><strong>{selected.reportCount}</strong><span>{isClear ? "RECORDED CASES" : "RELATED REPORTS"}</span></div>
+                    <div><strong>{selected.victimCount}</strong><span>{isClear ? "LINKED VICTIMS" : "PAST VICTIMS"}</span></div>
+                    <div><strong>{selected.reportedLoss}</strong><span>REPORTED LOSS</span></div>
+                    <div><strong>{selected.sources.length}</strong><span>{isClear ? "SOURCE MATCHES" : "SOCIAL SOURCES"}</span></div>
+                    <div><strong>{selected.firstSeen}</strong><span>{isClear ? "ACCOUNT HISTORY" : "FIRST SEEN"}</span></div>
+                  </>
+                )}
             </section>
 
             <section className="result-content">
               <section className="evidence-panel result-section">
                 <div className="panel-title">
-                  <span>{isClear ? "WHAT WE CHECKED" : "WHY WE FLAGGED IT"}</span>
+                  <span>{isLive
+                    ? isLiveNoMatch ? "WHAT LUNA ANALYZED" : isLiveNewCase ? "WHY IT WAS FLAGGED" : "WHY IT MATCHED"
+                    : isClear ? "WHAT WE CHECKED" : "WHY WE FLAGGED IT"}</span>
                   <strong>{visibleEvidence.length} {isClear ? "CHECKS" : "SIGNALS"} · {selected.match}</strong>
                 </div>
                 <div className="evidence-inputs" aria-label="Filter evidence by input type">
                   <button
                     className={evidenceFilter === "ALL" ? "active" : ""}
                     onClick={() => setEvidenceFilter("ALL")}
+                    aria-pressed={evidenceFilter === "ALL"}
                   >
                     ALL <span>{selected.evidence.length}</span>
                   </button>
@@ -652,6 +765,7 @@ export function App() {
                       key={`${type}-${label}`}
                       onClick={() => setEvidenceFilter(type)}
                       title={label}
+                      aria-pressed={evidenceFilter === type}
                     >
                       {type} <span>{selected.evidence.filter(([, , , source]) => source === type).length}</span>
                     </button>
@@ -674,16 +788,34 @@ export function App() {
                   ))}
                 </div>
                 <p className="campaign-name">
-                  {isClear ? "RESULT" : "KNOWN CAMPAIGN"} <span>{selected.campaign}</span>
+                  {isLive
+                    ? selected.analystConfirmed
+                      ? "KNOWN CAMPAIGN"
+                      : selected.hasCampaign
+                        ? "POSSIBLE CAMPAIGN MATCH"
+                        : isLiveNewCase ? "UNMATCHED CASE" : "RESULT"
+                    : isClear ? "RESULT" : "KNOWN CAMPAIGN"} <span>{selected.campaign}</span>
                 </p>
               </section>
 
               <section className="victim-panel result-section">
                 <div className="panel-title">
-                  <span>{isClear ? "CASE HISTORY" : "PAST VICTIM REPORTS"}</span>
-                  <strong>{selected.victimCount} {isClear ? "RECORDED CASES" : "LINKED CASES"}</strong>
+                  <span>{isLive ? "PRIVACY & COVERAGE" : isClear ? "CASE HISTORY" : "PAST VICTIM REPORTS"}</span>
+                  <strong>{isLive ? "NO CUSTOMER DATA" : `${selected.victimCount} ${isClear ? "RECORDED CASES" : "LINKED CASES"}`}</strong>
                 </div>
-                {selected.victims.length ? (
+                {isLive ? (
+                  <div className="clear-empty">
+                    {isLiveNoMatch
+                      ? <WarningCircle size={28} weight="regular" />
+                      : <ShieldCheck size={28} weight="fill" />}
+                    <strong>{isLiveNoMatch
+                      ? "No specific scam case was identified."
+                      : isLiveNewCase ? "No existing campaign met the match threshold." : "No customer identities are shown."}</strong>
+                    <p>{isLiveNoMatch
+                      ? "If money or credentials are requested, still verify through an official channel."
+                      : isLiveNewCase ? "The concrete case stays unmatched instead of being forced into a campaign." : "Only matched campaign evidence and public source documents are shown."}</p>
+                  </div>
+                ) : selected.victims.length ? (
                   <>
                     <div className="victim-list">
                       {selected.victims.map(([name, amount, story, meta]) => (
@@ -707,24 +839,49 @@ export function App() {
 
               <section className="source-panel result-section">
                 <div className="panel-title">
-                  <span>{isClear ? "MONITORED SOURCES" : "SIMILAR REPORTS FOUND"}</span>
-                  <strong>{isClear ? "NO MATCHES" : `${selected.reportCount} TOTAL SIGNALS`}</strong>
+                  <span>{isLive
+                    ? selected.hasCampaign ? "CAMPAIGN EVIDENCE" : isLiveNewCase ? "CAMPAIGN MATCHING" : "ANALYSIS RESULT"
+                    : isClear ? "MONITORED SOURCES" : "SIMILAR REPORTS FOUND"}</span>
+                  <strong>{isLive
+                    ? selected.sources.length
+                      ? `${selected.sources.length} SHOWN`
+                      : selected.hasCampaign ? "NO PUBLIC LINKS SHOWN" : "NO CAMPAIGN EVIDENCE"
+                    : isClear ? "NO MATCHES" : `${selected.reportCount} TOTAL SIGNALS`}</strong>
                 </div>
                 {selected.sources.length ? (
                   <div className="source-list">
-                    {selected.sources.map(([platform, title, age]) => (
-                      <article key={`${platform}-${title}`}>
-                        <div className="source-icon"><Quotes size={16} weight="fill" /></div>
-                        <div><span>{platform}</span><strong>{title}</strong></div>
-                        <small>{age}</small>
-                        <ArrowUpRight size={15} />
-                      </article>
+                    {selected.sources.map(([platform, title, age, url]) => (
+                      <a
+                        className="source-link"
+                        href={url || undefined}
+                        key={`${platform}-${title}`}
+                        target={url ? "_blank" : undefined}
+                        rel={url ? "noreferrer" : undefined}
+                        aria-disabled={url ? undefined : true}
+                      >
+                        <article>
+                          <div className="source-icon"><Quotes size={16} weight="fill" /></div>
+                          <div><span>{platform}</span><strong>{title}</strong></div>
+                          <small>{age}</small>
+                          <ArrowUpRight size={15} />
+                        </article>
+                      </a>
                     ))}
                   </div>
                 ) : (
-                  <div className="clear-empty compact"><ShieldCheck size={24} weight="fill" /><strong>No matching scam reports found.</strong><p>Nothing linked across monitored social sources.</p></div>
+                  <div className="clear-empty compact">
+                    {isLiveNoMatch ? <WarningCircle size={24} weight="regular" /> : <ShieldCheck size={24} weight="fill" />}
+                    <strong>{isLive
+                      ? selected.hasCampaign ? "Matched campaign evidence has no public link." : isLiveNewCase ? "No existing campaign was assigned." : "No campaign evidence was required."
+                      : "No matching public evidence found."}</strong>
+                    <p>{isLive
+                      ? selected.hasCampaign
+                        ? "The match still uses exact active campaign-indicator evidence."
+                        : isLiveNewCase ? "This concrete case remains unclustered for analyst review." : "Luna classified this as general or non-specific content."
+                        : "Nothing linked across monitored social sources."}</p>
+                  </div>
                 )}
-                <p className="mock-disclaimer">DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS</p>
+                <p className="mock-disclaimer">{isLive ? "LUNA ANALYSIS · EXACT NORMALIZED INDICATOR MATCHING · NO EMBEDDINGS" : "DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS"}</p>
               </section>
             </section>
           </motion.section>
@@ -746,7 +903,7 @@ export function App() {
               className="report-modal"
               role="dialog"
               aria-modal="true"
-              aria-label="Send an anonymous report"
+              aria-label="Preview an anonymous report"
               initial={{ y: 32, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 32, opacity: 0 }}
@@ -757,24 +914,24 @@ export function App() {
               {reportSent ? (
                 <div className="report-success">
                   <ShieldCheck size={40} weight="fill" />
-                  <p className="eyebrow">SIGNAL #12,843 ADDED</p>
-                  <h3>You just made this campaign harder to hide.</h3>
-                  <p>Your report was shared with the bank without your identity.</p>
+                  <p className="eyebrow">REPORT PREVIEW PREPARED</p>
+                  <h3>The anonymous handoff is ready to review.</h3>
+                  <p>No report was sent outside this prototype.</p>
                   <button onClick={reset}>CHECK SOMETHING ELSE</button>
                 </div>
               ) : (
                 <>
-                  <p className="eyebrow">PRIVACY PREVIEW / 01</p>
-                  <h3>Share signals. Not your identity.</h3>
+                  <p className="eyebrow">{isLive ? "ANONYMOUS REPORT PREVIEW / 01" : "DEMO PRIVACY PREVIEW / 01"}</p>
+                  <h3>Preview signals without personal identity.</h3>
                   <div className="redaction-preview">
                     <div><span>YOUR NAME</span><strong>[ REDACTED ]</strong></div>
                     <div><span>YOUR NUMBER</span><strong>[ REDACTED ]</strong></div>
-                    <div><span>SCAM SIGNALS</span><strong>3 SIGNALS</strong></div>
+                    <div><span>SCAM SIGNALS</span><strong>{selected.evidence.length} SIGNALS</strong></div>
                     <div><span>CAMPAIGN</span><strong>{selected.campaignId}</strong></div>
                   </div>
-                  <p className="privacy-note">The bank receives only what it needs to investigate and take down the campaign.</p>
+                  <p className="privacy-note">Prototype only: this shows the minimum evidence a future bank handoff could contain.</p>
                   <button className="send-report" onClick={() => setReportSent(true)}>
-                    AGREE & SEND REPORT
+                    SIMULATE ANONYMOUS REPORT
                     <ArrowUpRight size={18} weight="bold" />
                   </button>
                   <button className="cancel-report" onClick={() => setReportOpen(false)}>
@@ -790,9 +947,9 @@ export function App() {
       <AnimatePresence>
         {bankOpen && (
           <motion.div className="bank-toast" initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}>
-            <span>OFFICIAL CHANNEL · VERIFIED</span>
-            <strong>1900 54 54 13</strong>
-            <p>Never call back the number that contacted you.</p>
+            <span>{isLive ? "OFFICIAL CHANNELS ONLY" : "OFFICIAL CHANNEL · VERIFIED"}</span>
+            <strong>{isLive ? "CONTACT YOUR BANK" : "1900 54 54 13"}</strong>
+            <p>{isLive ? "Use the number in your bank app, on its website, or on the back of your card." : "Never call back the number that contacted you."}</p>
             <button onClick={() => setBankOpen(false)}><X size={16} /></button>
           </motion.div>
         )}
