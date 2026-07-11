@@ -89,7 +89,10 @@ containment and workflow totals remain explicitly outside the live-data block.
 The home checker posts real customer input to `POST /api/check` as multipart form data.
 It accepts optional `text`, `url`, and one `image` screenshot or QR file, with at least
 one field required and an 8 MB image limit. Luna analyzes text and images directly using
-strict structured output; no separate OCR step is added. Classification is conservative:
+strict structured output; no separate OCR step is added. A server-only QR decoder also
+extracts an exact barcode payload when possible while the original image still goes to
+Luna; failed decoding remains explicitly unreadable instead of inventing a payload.
+Classification is conservative:
 general scam-recovery advice, generic warnings, and legitimate account-opening
 commissions or referrals are not treated as concrete scams without case-specific
 evidence.

@@ -21,7 +21,7 @@ function percent(value) {
   return Math.round(Math.max(0, Math.min(1, Number.isFinite(number) ? number : 0)) * 100);
 }
 
-function formatDate(value, fallback = "CURRENT") {
+function formatDate(value, fallback = "NOT RECORDED") {
   if (!value) return fallback;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallback;
@@ -53,6 +53,15 @@ function inputRows(analysis, artifact) {
     (analysis.indicators || []).map((indicator) => evidenceSource(indicator.evidenceSource)),
   )];
   return (sources.length ? sources : ["INPUT"]).map((source) => [source, concise(artifact, 86)]);
+}
+
+function analysisEvidenceSource(analysis) {
+  const sources = [...new Set(
+    (analysis.indicators || []).map((indicator) => evidenceSource(indicator.evidenceSource)),
+  )];
+  if (sources.length === 1) return sources[0];
+  if (sources.includes("TEXT")) return "TEXT";
+  return sources[0] || "INPUT";
 }
 
 function resultCopy(status, campaign) {
@@ -93,6 +102,7 @@ function evidenceRows(payload) {
   const analysis = payload.analysis;
   const campaign = payload.campaign;
   const rows = [];
+  const primarySource = analysisEvidenceSource(analysis);
   for (const reason of campaign?.matchedReasons || []) {
     rows.push([
       `${String(reason.role || "evidence").toUpperCase()} MATCH`,
@@ -106,14 +116,14 @@ function evidenceRows(payload) {
     "CLASSIFICATION",
     label(analysis.primaryCategory),
     analysis.specificCase ? "specific case detected" : "general or non-specific content",
-    "TEXT",
+    primarySource,
     `${percent(analysis.confidence)}%`,
   ]);
   rows.push([
     "SEVERITY",
     `${analysis.severity} / 5`,
     concise(analysis.summary, 130),
-    "TEXT",
+    primarySource,
     `${analysis.severity}/5`,
   ]);
   for (const indicator of (analysis.indicators || []).filter((item) => item.matchEligible).slice(0, 4)) {
@@ -153,7 +163,7 @@ function impactRows(payload) {
   if (campaign) {
     return [
       [String(campaign.documentCount || 0), "CAMPAIGN DOCUMENTS"],
-      [String(campaign.indicatorCount || 0), "CAMPAIGN INDICATORS"],
+      [String(campaign.indicatorCount || 0), "TOTAL CAMPAIGN SIGNALS"],
       [`${campaign.maximumSeverity || 0}/5`, "MAX SEVERITY"],
       [Number(campaign.riskScore || 0).toFixed(1), "RISK SCORE"],
       [formatDate(campaign.firstSeenAt), "FIRST OBSERVED"],

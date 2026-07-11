@@ -93,3 +93,40 @@ test("not_scam is the only live clear result", () => {
   assert.equal(result.resultKicker, "NO CONCRETE SCAM CASE");
   assert.equal(result.canPreviewAnonymousReport, false);
 });
+
+test("image-only analysis keeps classification and severity in the IMAGE filter", () => {
+  const imagePayload = payload("not_scam", { withCampaign: false });
+  imagePayload.analysis.indicators = [
+    {
+      type: "qr_payload",
+      value: "000201-test-payload",
+      normalizedValue: "000201-test-payload",
+      evidenceSource: "qr_decoder",
+      matchEligible: true,
+    },
+    {
+      type: "media_hash",
+      value: "a".repeat(64),
+      normalizedValue: "a".repeat(64),
+      evidenceSource: "image",
+      matchEligible: true,
+    },
+  ];
+  const result = campaignCheckResultFromResponse(imagePayload, "recipient-qr.png");
+  assert.deepEqual(result.inputs, [["IMAGE", "recipient-qr.png"]]);
+  assert.equal(result.evidence.every((row) => row[3] === "IMAGE"), true);
+});
+
+test("missing campaign dates stay missing and total indicator stats are labeled accurately", () => {
+  const campaignPayload = payload("matched_campaign");
+  campaignPayload.campaign.firstSeenAt = null;
+  const result = campaignCheckResultFromResponse(campaignPayload, "0912345678");
+  assert.deepEqual(
+    result.impact.find(([, label]) => label === "TOTAL CAMPAIGN SIGNALS"),
+    ["7", "TOTAL CAMPAIGN SIGNALS"],
+  );
+  assert.deepEqual(
+    result.impact.find(([, label]) => label === "FIRST OBSERVED"),
+    ["NOT RECORDED", "FIRST OBSERVED"],
+  );
+});

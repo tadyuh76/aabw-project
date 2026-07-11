@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { GET } from "../app/api/bank-intelligence/route.js";
@@ -299,4 +300,11 @@ test("bank intelligence route returns non-cacheable sanitized 503", async (t) =>
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.deepEqual(await response.json(), { status: "unavailable" });
+});
+
+test("admin registry distinguishes provisional records from customer match results", async () => {
+  const source = await readFile(new URL("../src/BankReport.jsx", import.meta.url), "utf8");
+  assert.match(source, /PROVISIONAL CAMPAIGN/u);
+  assert.doesNotMatch(source, /POSSIBLE CAMPAIGN MATCH/u);
+  assert.match(source, /total signals/u);
 });

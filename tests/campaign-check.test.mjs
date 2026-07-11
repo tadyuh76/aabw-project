@@ -21,6 +21,7 @@ import {
   runCampaignCheck,
   validateCheckInput,
 } from "../src/server/campaign-check.js";
+import { decodeQrImage, parseEmvQrPayload } from "../src/server/qr-decode.js";
 
 const IDS = {
   campaign: "11111111-1111-4111-8111-111111111111",
@@ -29,7 +30,41 @@ const IDS = {
   phoneIndicator: "44444444-4444-4444-8444-444444444444",
   emailIndicator: "55555555-5555-4555-8555-555555555555",
   crossProductIndicator: "66666666-6666-4666-8666-666666666666",
+  qrIndicator: "77777777-7777-4777-8777-777777777777",
 };
+
+function emvField(tag, value) {
+  return `${tag}${String(value.length).padStart(2, "0")}${value}`;
+}
+
+function crc16CcittFalse(value) {
+  let crc = 0xffff;
+  for (const byte of Buffer.from(value, "utf8")) {
+    crc ^= byte << 8;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+
+function syntheticVietQrPayload(accountIdentifier = "123456789012") {
+  const beneficiary = emvField("00", "970436") + emvField("01", accountIdentifier);
+  const merchantAccount =
+    emvField("00", "A000000727") +
+    emvField("01", beneficiary) +
+    emvField("02", "QRIBFTTA");
+  const body =
+    emvField("00", "01") +
+    emvField("01", "11") +
+    emvField("38", merchantAccount) +
+    emvField("53", "704") +
+    emvField("58", "VN") +
+    "6304";
+  return `${body}${crc16CcittFalse(body)}`;
+}
+
+const SYNTHETIC_VIETQR_PAYLOAD = syntheticVietQrPayload();
 
 const BASE_MODEL_ANALYSIS = {
   primary_category: "scam_report",
@@ -323,6 +358,31 @@ test("OpenAI refusals and invalid structured responses become sanitized campaign
   );
 });
 
+test("deterministic QR decoding fails closed and parses valid VietQR fields", async () => {
+  const parsed = parseEmvQrPayload(SYNTHETIC_VIETQR_PAYLOAD);
+  assert.deepEqual(parsed, {
+    crcValid: true,
+    payloadFormat: "01",
+    initiationMethod: "11",
+    globallyUniqueIdentifier: "A000000727",
+    bankBin: "970436",
+    beneficiaryIdentifier: "123456789012",
+    serviceCode: "QRIBFTTA",
+    currency: "704",
+    country: "VN",
+    references: [],
+  });
+  assert.equal(
+    parseEmvQrPayload(`${SYNTHETIC_VIETQR_PAYLOAD.slice(0, -4)}0000`).crcValid,
+    false,
+  );
+  assert.equal(parseEmvQrPayload("not-an-emv-payload"), null);
+  assert.equal(
+    await decodeQrImage({ bytes: new Uint8Array([1, 2, 3]), mimeType: "image/png" }),
+    "",
+  );
+});
+
 test("strong indicator normalization enforces campaign matching guardrails", () => {
   const validCases = [
     ["bank_account", " 1234 56-7890 ", "1234567890"],
@@ -364,7 +424,11 @@ test("strong indicator normalization enforces campaign matching guardrails", () 
     ["qr_payload", "unknown / unreadable"],
     ["qr_payload", "unreadable payload"],
     ["qr_payload", "QR not visible"],
+    ["qr_payload", "QR payload could not be decoded"],
+    ["qr_payload", "unable to decode the QR code"],
+    ["qr_payload", "QR visible but payload unknown"],
     ["transaction_reference", "A-12"],
+    ["transaction_reference", "QRGD123456789012"],
     ["media_hash", "not-a-hash"],
     ["message_template", "transfer now"],
     ["domain", "Vietcombank"],
@@ -448,6 +512,73 @@ test("deterministic augmentation recovers exact indicators without trusting mode
   assert.equal(byType.get("qr_payload").normalizedValue, "");
   assert.equal(byType.get("person_alias").normalizedValue, "mr scammer");
   assert.equal(byType.get("person_alias").matchEligible, false);
+});
+
+test("verified QR output overrides model ambiguity and keeps image-only sources accurate", async () => {
+  const input = {
+    text: "",
+    url: "",
+    image: {
+      bytes: new Uint8Array([9, 8, 7, 6]),
+      mimeType: "image/png",
+      name: "recipient-qr.png",
+    },
+    decodedQrPayload: SYNTHETIC_VIETQR_PAYLOAD,
+  };
+  const openai = fakeOpenAI(modelAnalysis({
+    primary_category: "noise",
+    specific_case: false,
+    summary: "A receiving QR is shown without a concrete scam case.",
+    severity: 1,
+    indicators: [
+      {
+        type: "qr_payload",
+        value: "Decoded QR payload",
+        normalized_value: SYNTHETIC_VIETQR_PAYLOAD,
+        evidence_source: "visible payment code",
+      },
+      {
+        type: "transaction_reference",
+        value: "123456789012",
+        normalized_value: "123456789012",
+        evidence_source: "visible identifier",
+      },
+      {
+        type: "organization_alias",
+        value: "Example Bank",
+        normalized_value: "example bank",
+        evidence_source: "visible bank branding",
+      },
+    ],
+  }));
+
+  const analysis = await analyzeCustomerInput({ input, openaiClient: openai.client });
+  const exactQr = analysis.indicators.filter((indicator) =>
+    indicator.type === "qr_payload" && indicator.normalizedValue === SYNTHETIC_VIETQR_PAYLOAD
+  );
+  assert.equal(exactQr.length, 1);
+  assert.equal(exactQr[0].matchEligible, true);
+  assert.equal(exactQr[0].evidenceSource, "qr_decoder");
+
+  const bankAccount = analysis.indicators.find((indicator) =>
+    indicator.type === "bank_account" && indicator.normalizedValue === "123456789012"
+  );
+  assert.equal(bankAccount?.matchEligible, true);
+  assert.equal(bankAccount?.evidenceSource, "qr_decoder");
+  const mislabeledReference = analysis.indicators.find((indicator) =>
+    indicator.type === "transaction_reference" && indicator.value === "123456789012"
+  );
+  assert.equal(mislabeledReference?.matchEligible, false);
+  assert.equal(mislabeledReference?.normalizedValue, "");
+  assert.equal(
+    analysis.indicators.find((indicator) => indicator.type === "organization_alias")?.evidenceSource,
+    "image",
+  );
+
+  const prompt = openai.calls[0].input[0].content.find((item) => item.type === "input_text").text;
+  assert.match(prompt, /DETERMINISTIC QR DECODER OUTPUT/u);
+  assert.match(prompt, new RegExp(SYNTHETIC_VIETQR_PAYLOAD, "u"));
+  assert.equal(openai.calls[0].input[0].content.some((item) => item.type === "input_image"), true);
 });
 
 test("status decisions honor anchor and score thresholds without forcing nonspecific input", () => {
@@ -863,6 +994,71 @@ test("runCampaignCheck returns the complete matched response contract with exact
   }]);
   assert.ok(result.recommendedActions.length > 0);
   assert.match(result.recommendedActions.join(" "), /confirmed campaign evidence/i);
+});
+
+test("runCampaignCheck can match a future campaign by deterministically decoded QR payload", async () => {
+  const image = {
+    bytes: new Uint8Array([11, 22, 33, 44]),
+    mimeType: "image/png",
+    name: "campaign-qr.png",
+  };
+  const decoderCalls = [];
+  const openai = fakeOpenAI(modelAnalysis({ indicators: [] }));
+  const db = fakeSupabase((query) => {
+    if (query.table === "campaigns" && query.columns === "id") return { data: [] };
+    if (query.table === "campaign_indicators" && query.columns === "campaign_id") {
+      return { data: [] };
+    }
+    if (query.table === "campaign_documents" && query.columns === "campaign_id") {
+      return { data: [] };
+    }
+    if (query.table === "indicators") {
+      return { data: [{
+        id: IDS.qrIndicator,
+        kind: "qr_payload",
+        normalized_value: SYNTHETIC_VIETQR_PAYLOAD,
+      }] };
+    }
+    if (query.table === "campaign_indicators") {
+      return { data: [{
+        campaign_id: IDS.campaign,
+        indicator_id: IDS.qrIndicator,
+        role: "anchor",
+        weight: 0.9,
+        reasons: [{ basis: "same decoded QR" }],
+        is_active: true,
+      }] };
+    }
+    if (query.table === "campaigns") {
+      return { data: [campaignRow()] };
+    }
+    if (query.table === "campaign_documents") return { data: [] };
+    throw new Error(`Unexpected table/query ${query.table} ${query.columns}`);
+  });
+
+  const result = await runCampaignCheck({
+    input: { text: "This recipient already took the payment and blocked contact.", url: "", image },
+    openaiClient: openai.client,
+    supabaseClient: db.client,
+    qrDecoder: async (receivedImage) => {
+      decoderCalls.push(receivedImage);
+      return SYNTHETIC_VIETQR_PAYLOAD;
+    },
+  });
+
+  assert.deepEqual(decoderCalls, [image]);
+  assert.equal(result.status, "matched_campaign");
+  assert.equal(result.campaign.matchScore, 0.9);
+  assert.equal(result.campaign.analystConfirmed, false);
+  assert.equal(result.campaign.matchedReasons[0].indicatorType, "qr_payload");
+  assert.equal(result.campaign.matchedReasons[0].normalizedValue, SYNTHETIC_VIETQR_PAYLOAD);
+  assert.equal(
+    result.analysis.indicators.some((indicator) =>
+      indicator.type === "qr_payload" &&
+      indicator.normalizedValue === SYNTHETIC_VIETQR_PAYLOAD &&
+      indicator.matchEligible),
+    true,
+  );
 });
 
 test("input validation and multipart parsing enforce required fields, URL rules, and image limits", async () => {

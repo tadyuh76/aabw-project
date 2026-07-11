@@ -212,13 +212,13 @@ function LiveCampaignRegistry({ analytics }) {
             <article key={item.id}>
               <div className="live-registry-identity">
                 <span className={item.analystConfirmed ? "known" : "possible"}>
-                  {item.analystConfirmed ? "KNOWN CAMPAIGN" : "POSSIBLE CAMPAIGN MATCH"}
+                  {item.analystConfirmed ? "KNOWN CAMPAIGN" : "PROVISIONAL CAMPAIGN"}
                 </span>
                 <strong>{item.label}</strong>
                 <small>{item.campaignKey}</small>
               </div>
               <div className="live-registry-evidence">
-                <strong>{item.documentCount.toLocaleString("en-US")} docs · {item.indicatorCount.toLocaleString("en-US")} indicators</strong>
+                <strong>{item.documentCount.toLocaleString("en-US")} docs · {item.indicatorCount.toLocaleString("en-US")} total signals</strong>
                 <small>{item.scamTypes.length ? item.scamTypes.slice(0, 2).map(formatRegistryLabel).join(" · ") : "NO SCAM TYPE TAGGED"}</small>
               </div>
               <div className="live-registry-risk">
