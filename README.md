@@ -97,15 +97,19 @@ general scam-recovery advice, generic warnings, and legitimate account-opening
 commissions or referrals are not treated as concrete scams without case-specific
 evidence.
 
-The route normalizes eligible strong indicators and joins them exactly through active
-`campaign_indicators` to active, non-dismissed `campaigns`. It does not use embeddings or
-semantic clustering and never forces an input into a campaign. The response status is
+The route first normalizes eligible strong indicators and joins them exactly through active
+`campaign_indicators` to active, non-dismissed `campaigns`. When a concrete scam has no
+qualifying exact match, it retrieves a bounded candidate set using stored taxonomy, token
+overlap, and exact contextual signals linked through campaign documents. Luna then compares
+only capped stored evidence summaries for those candidates. This path does not use embeddings,
+does not create campaign relationships, and never forces an input into a campaign. The response status is
 one of `matched_campaign`, `possible_match`, `new_unmatched_case`, or `not_scam`, with a
 normalized analysis, the winning campaign when present, up to five public evidence
-documents, exact matched reasons, and recommended actions. A campaign is shown to the
-customer as `KNOWN CAMPAIGN` only when `analyst_confirmed=true`; otherwise the UI says
-`POSSIBLE CAMPAIGN MATCH`. “No match” means only that the current snapshot has no
-qualifying exact campaign evidence, not that the input is safe.
+documents, grounded match reasons, and recommended actions. A campaign is shown to the
+customer as `KNOWN CAMPAIGN` only when the match is exact and `analyst_confirmed=true`.
+A contextual comparison may produce only `LIKELY RELATED CAMPAIGN`; an unconfirmed exact
+match remains `POSSIBLE CAMPAIGN MATCH`. “No match” means only that the current snapshot has
+no qualifying exact or contextual campaign evidence, not that the input is safe.
 
 Bundled customer cases remain available only as an explicit demo fallback and still run
 through the existing idle → scanning → result → anonymous-report presentation. Real
@@ -114,7 +118,9 @@ input never silently selects a demo fixture.
 The `/bank` admin screen presents a live campaign registry backed by the stable
 `campaigns` table, including exact normalized indicator roles and analyst-confirmation
 state. The older illustrative campaign workspace remains explicitly identified as a
-prototype; its sample values are not included in live campaign totals.
+prototype; its sample values are not included in live campaign totals. The relationship map
+is separate from that workspace and is built only from live campaigns, stored taxonomy,
+capped linked documents, and server-masked indicators.
 
 ## Recommended fast defaults
 

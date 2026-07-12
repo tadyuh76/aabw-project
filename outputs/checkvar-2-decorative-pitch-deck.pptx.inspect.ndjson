@@ -1,0 +1,97 @@
+{"kind":"deck","id":"pr/4ymkw9","name":"Deck"}
+{"kind":"layout","layoutId":"acf0a843-4c8c-4570-942d-0505373e035d","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"75538dab-e030-4bb5-9374-e792e95d9476","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/u23s8c","slide":1,"title":"CHECKVAR 2.0","textShapes":5}
+{"kind":"shape","id":"sh/tgz2dojm","slide":1,"bbox":[0,0,660,720]}
+{"kind":"textbox","id":"sh/sfq14ji1","slide":1,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/jaxk7e1k","slide":1,"name":"text","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/i9ojy90z","slide":1,"name":"text","text":"Two minutes\nto decide.","textPreview":"Two minutes | to decide.","textChars":22,"textLines":2,"bbox":[58,158,520,150]}
+{"kind":"textbox","id":"sh/5cf294ja","slide":1,"name":"text","text":"Real—or a transfer away from loss?","textPreview":"Real—or a transfer away from loss?","textChars":34,"textLines":1,"bbox":[62,340,500,62]}
+{"kind":"shape","id":"sh/4b610jip","slide":1,"bbox":[62,454,110,4]}
+{"kind":"textbox","id":"sh/vmxk3u18","slide":1,"name":"text","text":"PROTECT BEFORE TRUST BECOMES A TRANSFER.","textPreview":"PROTECT BEFORE TRUST BECOMES A TRANSFER.","textChars":40,"textLines":1,"bbox":[62,482,510,52]}
+{"kind":"image","id":"im/z25srupc","slide":1,"name":"","alt":"Vietnamese customer reading a suspicious identity verification message at night","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/u23s8c","slide":1,"text":"Imagine receiving a Zalo message from someone claiming to be VNeID support. The logo looks correct. They know your name. They tell you to verify immediately, install an app, or scan a QR code.\nYou have maybe two minutes to decide whether to trust it.\nThis is the moment CheckVar 2.0 is built for: protecting customers before trust becomes a transfer."}
+{"kind":"slide","id":"sl/pajsl9","slide":2,"title":"CHECKVAR 2.0","textShapes":9}
+{"kind":"shape","id":"sh/cfy9szat","slide":2,"bbox":[0,0,545,720]}
+{"kind":"textbox","id":"sh/dg7qlkby","slide":2,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/ehgrupsj","slide":2,"name":"text","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/zip8nut4","slide":2,"name":"text","text":"The warning cycle\nis already behind.","textPreview":"The warning cycle | is already behind.","textChars":36,"textLines":2,"bbox":[58,112,470,122]}
+{"kind":"textbox","id":"sh/0ji9wzap","slide":2,"name":"text","text":"220,000+","textPreview":"220,000+","textChars":8,"textLines":1,"bbox":[58,278,390,62]}
+{"kind":"textbox","id":"sh/1krqp4ba","slide":2,"name":"text","text":"online-fraud reports\nin 10 months of 2024","textPreview":"online-fraud reports | in 10 months of 2024","textChars":41,"textLines":2,"bbox":[62,347,360,60]}
+{"kind":"textbox","id":"sh/ulw7i5sf","slide":2,"name":"text","text":"6,685","textPreview":"6,685","textChars":5,"textLines":1,"bbox":[58,444,230,44]}
+{"kind":"textbox","id":"sh/fm58bat0","slide":2,"name":"text","text":"reports in the first week of 2025","textPreview":"reports in the first week of 2025","textChars":33,"textLines":1,"bbox":[62,492,390,32]}
+{"kind":"textbox","id":"sh/bqt0ryt8","slide":2,"name":"text","text":"New number. New account. Same campaign.","textPreview":"New number. New account. Same campaign.","textChars":39,"textLines":1,"bbox":[62,572,420,32]}
+{"kind":"textbox","id":"sh/apkjytsn","slide":2,"name":"text","text":"Sources: Vietnam MIC / Information Security Authority","textPreview":"Sources: Vietnam MIC / Information Security Authority","textChars":53,"textLines":1,"bbox":[62,656,410,18]}
+{"kind":"image","id":"im/2x0j61k7","slide":2,"name":"","alt":"Vietnam illuminated by connected scam signals and campaign clusters","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/pajsl9","slide":2,"text":"This is already happening at scale in Vietnam. In the first ten months of 2024, authorities received more than 220,000 online-fraud reports—most connected to financial and banking scams. In the first week of 2025 alone, another 6,685 reports were submitted.\nThe difficult part is that scammers constantly change phone numbers, accounts, domains and QR codes. Each report looks different, but the campaign behind it is often the same."}
+{"kind":"slide","id":"sl/3wvfyt","slide":3,"title":"CHECKVAR 2.0","textShapes":12}
+{"kind":"shape","id":"sh/s7i14jel","slide":3,"bbox":[0,0,540,720]}
+{"kind":"textbox","id":"sh/t8r2d4v6","slide":3,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/i1gjypwj","slide":3,"name":"text","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/j2p07ux4","slide":3,"name":"text","text":"One place to\ncheck anything.","textPreview":"One place to | check anything.","textChars":28,"textLines":2,"bbox":[58,126,450,118]}
+{"kind":"textbox","id":"sh/k3y10zep","slide":3,"name":"text","text":"PASTE","textPreview":"PASTE","textChars":5,"textLines":1,"bbox":[62,290,130,28]}
+{"kind":"textbox","id":"sh/547i94va","slide":3,"name":"text","text":"a message or link","textPreview":"a message or link","textChars":17,"textLines":1,"bbox":[184,290,260,28]}
+{"kind":"textbox","id":"sh/2x0jatwn","slide":3,"name":"text","text":"DROP","textPreview":"DROP","textChars":4,"textLines":1,"bbox":[62,340,130,28]}
+{"kind":"textbox","id":"sh/3ytkjyd8","slide":3,"name":"text","text":"a screenshot","textPreview":"a screenshot","textChars":12,"textLines":1,"bbox":[184,340,260,28]}
+{"kind":"textbox","id":"sh/3up8ni9w","slide":3,"name":"text","text":"SCAN","textPreview":"SCAN","textChars":4,"textLines":1,"bbox":[62,390,130,28]}
+{"kind":"textbox","id":"sh/2tg7ud8b","slide":3,"name":"text","text":"a QR code","textPreview":"a QR code","textChars":9,"textLines":1,"bbox":[184,390,260,28]}
+{"kind":"textbox","id":"sh/pw7qpsr2","slide":3,"name":"text","text":"CHECK","textPreview":"CHECK","textChars":5,"textLines":1,"bbox":[62,440,130,28]}
+{"kind":"textbox","id":"sh/ovypwnqh","slide":3,"name":"text","text":"a recipient","textPreview":"a recipient","textChars":11,"textLines":1,"bbox":[184,440,260,28]}
+{"kind":"textbox","id":"sh/by98rips","slide":3,"name":"text","text":"An answer while the customer can still stop.","textPreview":"An answer while the customer can still stop.","textChars":44,"textLines":1,"bbox":[62,554,400,62]}
+{"kind":"image","id":"im/ux87u1cb","slide":3,"name":"","alt":"Premium smartphone combining screenshot link QR and recipient evidence into one scan","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/3wvfyt","slide":3,"text":"CheckVar gives customers one simple place to check evidence.\nThey can paste a message, enter a link or recipient, upload a screenshot, or scan a QR code.\nWe analyse the evidence together—not as isolated pieces—and return an answer while the customer can still stop the transaction."}
+{"kind":"slide","id":"sl/g7c42h","slide":4,"title":"CHECKVAR 2.0","textShapes":10}
+{"kind":"shape","id":"sh/0bit0zy9","slide":4,"bbox":[0,0,590,720]}
+{"kind":"textbox","id":"sh/lcratkfu","slide":4,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/q5gru5g7","slide":4,"name":"text","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/b6psnaxs","slide":4,"name":"text","text":"Not just a warning.\nAn explanation.","textPreview":"Not just a warning. | An explanation.","textChars":35,"textLines":2,"bbox":[58,118,500,118]}
+{"kind":"textbox","id":"sh/c7y9wfyd","slide":4,"name":"text","text":"PHRASE","textPreview":"PHRASE","textChars":6,"textLines":1,"bbox":[62,290,120,24]}
+{"kind":"textbox","id":"sh/d87apkfy","slide":4,"name":"text","text":"Seen in 41 prior reports","textPreview":"Seen in 41 prior reports","textChars":24,"textLines":1,"bbox":[190,286,330,30]}
+{"kind":"textbox","id":"sh/a1kb69gb","slide":4,"name":"text","text":"DOMAIN","textPreview":"DOMAIN","textChars":6,"textLines":1,"bbox":[62,350,120,24]}
+{"kind":"textbox","id":"sh/v2tszexw","slide":4,"name":"text","text":"Distributes a suspicious APK","textPreview":"Distributes a suspicious APK","textChars":28,"textLines":1,"bbox":[190,346,340,30]}
+{"kind":"textbox","id":"sh/ru1wjixw","slide":4,"name":"text","text":"PAYEE","textPreview":"PAYEE","textChars":5,"textLines":1,"bbox":[62,410,120,24]}
+{"kind":"textbox","id":"sh/qtsvadgb","slide":4,"name":"text","text":"Linked to confirmed cases","textPreview":"Linked to confirmed cases","textChars":25,"textLines":1,"bbox":[190,406,340,30]}
+{"kind":"textbox","id":"sh/dwjelsf2","slide":4,"name":"text","text":"STOP  ·  CALL THE BANK  ·  REPORT","textPreview":"STOP  ·  CALL THE BANK  ·  REPORT","textChars":33,"textLines":1,"bbox":[62,552,460,28]}
+{"kind":"image","id":"im/21w3mhor","slide":4,"name":"","alt":"Three evidence artifacts locking into one fraud campaign fingerprint","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/g7c42h","slide":4,"text":"We don’t simply show a red warning.\nCheckVar explains why: this phrase appeared in previous reports; this domain distributes a suspicious APK; this beneficiary is connected to confirmed cases.\nThe customer receives clear actions: stop the transfer, contact the bank, and optionally report the case anonymously.\nThat explanation is essential for trust."}
+{"kind":"slide","id":"sl/vqslbl","slide":5,"title":"CHECKVAR 2.0","textShapes":9}
+{"kind":"shape","id":"sh/dczq1w7u","slide":5,"bbox":[0,0,520,720]}
+{"kind":"textbox","id":"sh/cbqpsrq9","slide":5,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/ze1836p0","slide":5,"name":"text","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/eds7u18f","slide":5,"name":"text","text":"A report becomes\nintelligence.","textPreview":"A report becomes | intelligence.","textChars":30,"textLines":2,"bbox":[58,122,430,118]}
+{"kind":"textbox","id":"sh/1gjq5w76","slide":5,"name":"text","text":"ACCOUNT","textPreview":"ACCOUNT","textChars":7,"textLines":1,"bbox":[62,296,150,26]}
+{"kind":"textbox","id":"sh/0fa9wbql","slide":5,"name":"text","text":"PHONE","textPreview":"PHONE","textChars":5,"textLines":1,"bbox":[222,296,120,26]}
+{"kind":"textbox","id":"sh/ni1876pw","slide":5,"name":"text","text":"DOMAIN","textPreview":"DOMAIN","textChars":6,"textLines":1,"bbox":[352,296,120,26]}
+{"kind":"textbox","id":"sh/mhsry18b","slide":5,"name":"text","text":"Exact, durable signals connect cases to campaigns.","textPreview":"Exact, durable signals connect cases to campaigns.","textChars":50,"textLines":1,"bbox":[62,358,390,65]}
+{"kind":"shape","id":"sh/c76t4jy1","slide":5,"bbox":[62,468,365,2]}
+{"kind":"textbox","id":"sh/x8fudofm","slide":5,"name":"text","text":"NO FORCED MATCHES","textPreview":"NO FORCED MATCHES","textChars":17,"textLines":1,"bbox":[62,496,260,26]}
+{"kind":"textbox","id":"sh/a5ob29gv","slide":5,"name":"text","text":"Every connection stays reviewable.","textPreview":"Every connection stays reviewable.","textChars":34,"textLines":1,"bbox":[62,532,360,30]}
+{"kind":"image","id":"im/ru9cr6pg","slide":5,"name":"","alt":"Anonymous report becoming durable fraud signals and joining a campaign intelligence loop","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/vqslbl","slide":5,"text":"The anonymous report does not disappear into a support inbox.\nCheckVar extracts durable signals—accounts, phone numbers, domains and QR payloads—and connects them to existing campaigns.\nThe matching is intentionally conservative. We do not force every suspicious case into a campaign. Every connection remains reviewable by an analyst."}
+{"kind":"slide","id":"sl/u6pcr8","slide":6,"title":"CHECKVAR 2.0","textShapes":8}
+{"kind":"shape","id":"sh/587mpw3e","slide":6,"bbox":[0,0,570,720]}
+{"kind":"textbox","id":"sh/47ylgr2t","slide":6,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/vi54jmlc","slide":6,"name":"text","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/uhw3ahkr","slide":6,"name":"text","text":"Fifty complaints.\nOne campaign.","textPreview":"Fifty complaints. | One campaign.","textChars":31,"textLines":2,"bbox":[58,114,470,118]}
+{"kind":"textbox","id":"sh/hknmlw3i","slide":6,"name":"text","text":"WHAT TO DO NEXT","textPreview":"WHAT TO DO NEXT","textChars":15,"textLines":1,"bbox":[62,284,280,28]}
+{"kind":"textbox","id":"sh/wjelcr2x","slide":6,"name":"text","text":"Review 2 beneficiary accounts","textPreview":"Review 2 beneficiary accounts","textChars":29,"textLines":1,"bbox":[62,332,430,34]}
+{"kind":"textbox","id":"sh/7e5kfmlg","slide":6,"name":"text","text":"Escalate the active domain","textPreview":"Escalate the active domain","textChars":26,"textLines":1,"bbox":[62,390,430,34]}
+{"kind":"textbox","id":"sh/mdc36hkv","slide":6,"name":"text","text":"Export confirmed accounts","textPreview":"Export confirmed accounts","textChars":25,"textLines":1,"bbox":[62,448,430,34]}
+{"kind":"textbox","id":"sh/kjmdwfqt","slide":6,"name":"text","text":"The bank sees the pattern—and can act on it.","textPreview":"The bank sees the pattern—and can act on it.","textChars":44,"textLines":1,"bbox":[62,570,440,58]}
+{"kind":"image","id":"im/fup8zyds","slide":6,"name":"","alt":"Bank fraud operations workspace with one prioritized campaign and next action","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/u6pcr8","slide":6,"text":"This gives bank teams a different operating view.\nInstead of investigating 50 disconnected complaints, they can see one active campaign affecting several banks, the evidence connecting those cases, and the next action to take.\nFor example: review two beneficiary accounts, escalate an active phishing domain, or export high-confidence accounts for blocking."}
+{"kind":"slide","id":"sl/u6yh81","slide":7,"title":"CHECKVAR 2.0","textShapes":10}
+{"kind":"shape","id":"sh/ytwjepo3","slide":7,"bbox":[0,0,650,720]}
+{"kind":"textbox","id":"sh/ju507u5o","slide":7,"name":"text","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[58,34,210,22]}
+{"kind":"textbox","id":"sh/8zy1kj6l","slide":7,"name":"text","text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1160,34,54,22]}
+{"kind":"textbox","id":"sh/t07idonq","slide":7,"name":"text","text":"Protect the\nnext customer.","textPreview":"Protect the | next customer.","textChars":26,"textLines":2,"bbox":[58,116,530,115]}
+{"kind":"textbox","id":"sh/6xgji9of","slide":7,"name":"text","text":"ONE BANK","textPreview":"ONE BANK","textChars":8,"textLines":1,"bbox":[62,300,150,24]}
+{"kind":"textbox","id":"sh/7yp0be50","slide":7,"name":"text","text":"ONE SCAM TYPE","textPreview":"ONE SCAM TYPE","textChars":13,"textLines":1,"bbox":[232,300,190,24]}
+{"kind":"textbox","id":"sh/g3y1oj6h","slide":7,"name":"text","text":"30 DAYS","textPreview":"30 DAYS","textChars":7,"textLines":1,"bbox":[442,300,130,24]}
+{"kind":"textbox","id":"sh/horihon2","slide":7,"name":"text","text":"Measure the time from first signal\nto customer protection.","textPreview":"Measure the time from first signal | to customer protection.","textChars":58,"textLines":2,"bbox":[62,365,500,76]}
+{"kind":"shape","id":"sh/hczuxkjy","slide":7,"bbox":[62,510,495,3]}
+{"kind":"textbox","id":"sh/gbqdofid","slide":7,"name":"text","text":"CHECK THE EVIDENCE.","textPreview":"CHECK THE EVIDENCE.","textChars":19,"textLines":1,"bbox":[62,542,430,26]}
+{"kind":"textbox","id":"sh/vaxcva1s","slide":7,"name":"text","text":"CONNECT THE CAMPAIGN.","textPreview":"CONNECT THE CAMPAIGN.","textChars":21,"textLines":1,"bbox":[62,574,430,26]}
+{"kind":"textbox","id":"sh/u9ovm507","slide":7,"name":"text","text":"PROTECT EVERY TRANSFER.","textPreview":"PROTECT EVERY TRANSFER.","textChars":23,"textLines":1,"bbox":[62,606,430,26]}
+{"kind":"image","id":"im/gnmlk7yt","slide":7,"name":"","alt":"Vietnamese bank customer safely completing a transfer while intelligence protects the next customer","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/u6yh81","slide":7,"text":"Vietnam does not need another static scam-warning page. Customers need help at the exact moment they are making a decision, and banks need the intelligence to act on the campaign behind it.\nCheckVar 2.0 connects those two moments.\nOur next step is a focused 30-day pilot with one bank and one high-volume scam type. We will measure one outcome: how much we reduce the time from the first signal to customer protection.\nCheck the evidence. Connect the campaign. Protect every transfer.\nKey line: Scammers change identities faster than banks can publish warnings. CheckVar turns every customer check into an opportunity to stop the campaign."}

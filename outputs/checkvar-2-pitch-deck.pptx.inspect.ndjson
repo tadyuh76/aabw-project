@@ -1,0 +1,132 @@
+{"kind":"deck","id":"pr/x56s2d","name":"Deck"}
+{"kind":"layout","layoutId":"51c753fa-82fa-424b-bff8-4f11ce1d0bb3","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"1169a07c-9141-4a30-ab74-cdfd16391fbe","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/0h7oxa","slide":1,"title":"CHECKVAR 2.0","textShapes":5}
+{"kind":"textbox","id":"sh/pcvq5kje","slide":1,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/29k7up0n","slide":1,"name":"page","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/3ad83u18","slide":1,"name":"title","text":"PROTECT EVERY\nTRANSFER.","textPreview":"PROTECT EVERY | TRANSFER.","textChars":23,"textLines":2,"bbox":[72,142,790,205]}
+{"kind":"textbox","id":"sh/g72psfix","slide":1,"name":"subtitle","text":"CheckVar 2.0 turns suspicious evidence into a customer decision—and bank action.","textPreview":"CheckVar 2.0 turns suspicious evidence into a customer decision—and bank action.","textChars":80,"textLines":1,"bbox":[76,380,720,78]}
+{"kind":"shape","id":"sh/18bq1kj2","slide":1,"name":"signal","bbox":[76,514,1128,3]}
+{"kind":"textbox","id":"sh/elk7q50r","slide":1,"name":"loop","text":"CUSTOMER CHECK  →  CAMPAIGN INTELLIGENCE  →  FRAUD OPERATIONS","textPreview":"CUSTOMER CHECK  →  CAMPAIGN INTELLIGENCE  →  FRAUD OPERATIONS","textChars":61,"textLines":1,"bbox":[76,548,900,30]}
+{"kind":"notes","id":"nt/0h7oxa","slide":1,"text":"Scams now move faster than the warning cycle. CheckVar closes that gap at the moment a customer is about to trust, click, install, or transfer.\nIt connects an evidence check to the bank team that can act on the campaign behind it."}
+{"kind":"slide","id":"sl/nny3l7","slide":2,"title":"CHECKVAR 2.0","textShapes":13}
+{"kind":"textbox","id":"sh/hkvmp0b6","slide":2,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/uhk3elsf","slide":2,"name":"page","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/vit4nqt0","slide":2,"name":"title","text":"A single scam rarely looks the same twice.","textPreview":"A single scam rarely looks the same twice.","textChars":42,"textLines":1,"bbox":[72,92,1050,58]}
+{"kind":"textbox","id":"sh/4nmlkvah","slide":2,"name":"sub","text":"Numbers rotate. Domains change. QR codes relay money. The operating pattern survives.","textPreview":"Numbers rotate. Domains change. QR codes relay money. The operating pattern survives.","textChars":85,"textLines":1,"bbox":[72,160,940,48]}
+{"kind":"textbox","id":"sh/58vmt0b2","slide":2,"name":"text","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[72,256,60,32]}
+{"kind":"textbox","id":"sh/il43i5sr","slide":2,"name":"text","text":"FRAGMENTED EVIDENCE","textPreview":"FRAGMENTED EVIDENCE","textChars":19,"textLines":1,"bbox":[150,256,330,32]}
+{"kind":"textbox","id":"sh/jmd4ratc","slide":2,"name":"text","text":"A screenshot sits with the customer. A payee sits with the bank. A warning sits on social media.","textPreview":"A screenshot sits with the customer. A payee sits with the bank. A warning sits on social media.","textChars":96,"textLines":1,"bbox":[490,256,650,62]}
+{"kind":"shape","id":"sh/0rilobad","slide":2,"name":"box","bbox":[72,338,1060,1]}
+{"kind":"textbox","id":"sh/lsb2hgby","slide":2,"name":"text","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[72,374,60,32]}
+{"kind":"textbox","id":"sh/5s7y9wfa","slide":2,"name":"text","text":"SLOW CONFIRMATION","textPreview":"SLOW CONFIRMATION","textChars":17,"textLines":1,"bbox":[150,374,330,32]}
+{"kind":"textbox","id":"sh/kryx0byp","slide":2,"name":"text","text":"Customers need an answer before the transfer—not after a case review.","textPreview":"Customers need an answer before the transfer—not after a case review.","textChars":69,"textLines":1,"bbox":[490,374,650,62]}
+{"kind":"shape","id":"sh/jqpg76x4","slide":2,"name":"box","bbox":[72,456,1060,1]}
+{"kind":"textbox","id":"sh/ipgfy1gj","slide":2,"name":"text","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[72,492,60,32]}
+{"kind":"textbox","id":"sh/tgryxgf6","slide":2,"name":"text","text":"ISOLATED RESPONSE","textPreview":"ISOLATED RESPONSE","textChars":17,"textLines":1,"bbox":[150,492,330,32]}
+{"kind":"textbox","id":"sh/svyx4byl","slide":2,"name":"text","text":"Banks block indicators one at a time while the campaign rotates around them.","textPreview":"Banks block indicators one at a time while the campaign rotates around them.","textChars":76,"textLines":1,"bbox":[490,492,650,62]}
+{"kind":"shape","id":"sh/7upgv6x0","slide":2,"name":"box","bbox":[72,574,1060,1]}
+{"kind":"notes","id":"nt/nny3l7","slide":2,"text":"The core problem is not lack of data. It is that the evidence is fragmented and arrives after the customer decision.\nScammers exploit that delay by changing surface indicators while preserving the same scripts, infrastructure, and money trails."}
+{"kind":"slide","id":"sl/c1t2eo","slide":3,"title":"CHECKVAR 2.0","textShapes":10}
+{"kind":"textbox","id":"sh/sbm9sbad","slide":3,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/rad8z6ts","slide":3,"name":"page","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/694rq1s7","slide":3,"name":"text","text":"One evidence surface. One clear next step.","textPreview":"One evidence surface. One clear next step.","textChars":42,"textLines":1,"bbox":[72,86,930,54]}
+{"kind":"textbox","id":"sh/10fa5gbu","slide":3,"name":"text","text":"Paste text, drop a screenshot, scan a QR, or enter a recipient.","textPreview":"Paste text, drop a screenshot, scan a QR, or enter a recipient.","textChars":63,"textLines":1,"bbox":[72,148,840,38]}
+{"kind":"shape","id":"sh/gz69wba9","slide":3,"name":"dropzone","bbox":[72,230,1136,290]}
+{"kind":"textbox","id":"sh/fyxs36t4","slide":3,"name":"text","text":"DROP  ·  PASTE  ·  TYPE","textPreview":"DROP  ·  PASTE  ·  TYPE","textChars":23,"textLines":1,"bbox":[112,270,500,32]}
+{"kind":"textbox","id":"sh/ex4ru1sj","slide":3,"name":"text","text":"telegram_support_4821.png","textPreview":"telegram_support_4821.png","textChars":25,"textLines":1,"bbox":[112,326,660,48]}
+{"kind":"textbox","id":"sh/h4bqtwbq","slide":3,"name":"text","text":"Screenshot + message text detected","textPreview":"Screenshot + message text detected","textChars":34,"textLines":1,"bbox":[112,388,500,28]}
+{"kind":"shape","id":"sh/w329kra5","slide":3,"name":"check","bbox":[930,330,190,58]}
+{"kind":"textbox","id":"sh/qx4fq5wr","slide":3,"name":"text","text":"CHECK EVIDENCE","textPreview":"CHECK EVIDENCE","textChars":14,"textLines":1,"bbox":[946,348,160,22]}
+{"kind":"textbox","id":"sh/rydwzadc","slide":3,"name":"text","text":"IMAGE  •  URL  •  TEXT  •  QR  •  ACCOUNT","textPreview":"IMAGE  •  URL  •  TEXT  •  QR  •  ACCOUNT","textChars":41,"textLines":1,"bbox":[112,466,560,24]}
+{"kind":"textbox","id":"sh/szmxsfex","slide":3,"name":"text","text":"Designed for the moment before trust becomes a transaction.","textPreview":"Designed for the moment before trust becomes a transaction.","textChars":59,"textLines":1,"bbox":[72,574,950,42]}
+{"kind":"notes","id":"nt/c1t2eo","slide":3,"text":"The customer experience is deliberately simple: one dominant evidence surface, not a chatbot or dashboard.\nThe live prototype supports text, URLs, screenshots, QR files, and account details, then moves through scanning to a verdict and anonymous report."}
+{"kind":"slide","id":"sl/6ae54p","slide":4,"title":"CHECKVAR 2.0","textShapes":16}
+{"kind":"textbox","id":"sh/f2d0729g","slide":4,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/g3mh07q1","slide":4,"name":"page","text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/h4vi9crm","slide":4,"name":"text","text":"A verdict that explains itself.","textPreview":"A verdict that explains itself.","textChars":31,"textLines":1,"bbox":[72,86,920,54]}
+{"kind":"textbox","id":"sh/254j2h87","slide":4,"name":"text","text":"KNOWN CAMPAIGN","textPreview":"KNOWN CAMPAIGN","textChars":14,"textLines":1,"bbox":[72,170,330,28]}
+{"kind":"textbox","id":"sh/36x0bmpc","slide":4,"name":"text","text":"VNeID SUPPORT LOOP","textPreview":"VNeID SUPPORT LOOP","textChars":18,"textLines":1,"bbox":[72,210,800,50]}
+{"kind":"textbox","id":"sh/47614rqx","slide":4,"name":"text","text":"96% match","textPreview":"96% match","textChars":9,"textLines":1,"bbox":[1010,214,170,38]}
+{"kind":"shape","id":"sh/psfidw7i","slide":4,"name":"box","bbox":[72,306,1136,62]}
+{"kind":"textbox","id":"sh/qtoj6183","slide":4,"name":"text","text":"OCR PHRASE","textPreview":"OCR PHRASE","textChars":10,"textLines":1,"bbox":[94,324,180,24]}
+{"kind":"textbox","id":"sh/rux0fmpo","slide":4,"name":"text","text":"“verify before 11 PM”","textPreview":"“verify before 11 PM”","textChars":21,"textLines":1,"bbox":[292,321,540,30]}
+{"kind":"textbox","id":"sh/vitg3ml0","slide":4,"name":"text","text":"41 prior reports","textPreview":"41 prior reports","textChars":16,"textLines":1,"bbox":[900,324,270,24]}
+{"kind":"shape","id":"sh/uhkzahkf","slide":4,"name":"box","bbox":[72,390,1136,62]}
+{"kind":"textbox","id":"sh/hkvy5w36","slide":4,"name":"text","text":"DESTINATION","textPreview":"DESTINATION","textChars":11,"textLines":1,"bbox":[94,408,180,24]}
+{"kind":"textbox","id":"sh/wjmhcr2l","slide":4,"name":"text","text":"vneid-ho-tro[.]live → APK","textPreview":"vneid-ho-tro[.]live → APK","textChars":25,"textLines":1,"bbox":[292,405,540,30]}
+{"kind":"textbox","id":"sh/7etgz2lo","slide":4,"name":"text","text":"domain rotated","textPreview":"domain rotated","textChars":14,"textLines":1,"bbox":[900,408,270,24]}
+{"kind":"shape","id":"sh/mdkz6xkj","slide":4,"name":"box","bbox":[72,474,1136,62]}
+{"kind":"textbox","id":"sh/9gby1c3u","slide":4,"name":"text","text":"PAYEE","textPreview":"PAYEE","textChars":5,"textLines":1,"bbox":[94,492,180,24]}
+{"kind":"textbox","id":"sh/8f2h8729","slide":4,"name":"text","text":"MB •••• 8086","textPreview":"MB •••• 8086","textChars":12,"textLines":1,"bbox":[292,489,540,30]}
+{"kind":"textbox","id":"sh/raxgb6l8","slide":4,"name":"text","text":"6 confirmed cases","textPreview":"6 confirmed cases","textChars":17,"textLines":1,"bbox":[900,492,270,24]}
+{"kind":"textbox","id":"sh/694zi1kn","slide":4,"name":"text","text":"STOP THE TRANSFER  ·  CALL THE BANK  ·  REPORT ANONYMOUSLY","textPreview":"STOP THE TRANSFER  ·  CALL THE BANK  ·  REPORT ANONYMOUSLY","textChars":58,"textLines":1,"bbox":[72,594,1000,30]}
+{"kind":"notes","id":"nt/6ae54p","slide":4,"text":"The result does more than label something suspicious. It shows the exact evidence that connects the input to a known or possible campaign.\nThe customer gets concrete action: stop, contact the bank, and optionally contribute an anonymized report."}
+{"kind":"slide","id":"sl/dppb43","slide":5,"title":"CHECKVAR 2.0","textShapes":18}
+{"kind":"textbox","id":"sh/fmho7e5c","slide":5,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/0nqpgj6x","slide":5,"name":"page","text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/1oz69oni","slide":5,"name":"text","text":"Every check can strengthen the bank’s view.","textPreview":"Every check can strengthen the bank’s view.","textChars":43,"textLines":1,"bbox":[72,86,980,54]}
+{"kind":"textbox","id":"sh/qhona9ov","slide":5,"name":"text","text":"Privacy-redacted evidence becomes campaign intelligence—without forcing weak matches.","textPreview":"Privacy-redacted evidence becomes campaign intelligence—without forcing weak matches.","textChars":85,"textLines":1,"bbox":[72,148,970,38]}
+{"kind":"shape","id":"sh/rixo3e5g","slide":5,"name":"box","bbox":[72,250,250,194]}
+{"kind":"textbox","id":"sh/sjq5cj6l","slide":5,"name":"text","text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[94,270,36,30]}
+{"kind":"textbox","id":"sh/dkz65on6","slide":5,"name":"text","text":"INGEST","textPreview":"INGEST","textChars":6,"textLines":1,"bbox":[94,320,200,30]}
+{"kind":"textbox","id":"sh/ads76doz","slide":5,"name":"text","text":"Public reports + customer evidence","textPreview":"Public reports + customer evidence","textChars":34,"textLines":1,"bbox":[94,368,200,58]}
+{"kind":"shape","id":"sh/be1ofy5k","slide":5,"name":"box","bbox":[354,250,250,194]}
+{"kind":"textbox","id":"sh/3i5wru1s","slide":5,"name":"text","text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[376,270,36,30]}
+{"kind":"textbox","id":"sh/2hwvypk7","slide":5,"name":"text","text":"EXTRACT","textPreview":"EXTRACT","textChars":7,"textLines":1,"bbox":[376,320,200,30]}
+{"kind":"textbox","id":"sh/pk7et4jy","slide":5,"name":"text","text":"Phones, accounts, domains, QR payloads","textPreview":"Phones, accounts, domains, QR payloads","textChars":38,"textLines":1,"bbox":[376,368,200,58]}
+{"kind":"shape","id":"sh/ojyx0z2d","slide":5,"name":"box","bbox":[636,250,250,194]}
+{"kind":"textbox","id":"sh/bmpwve1o","slide":5,"name":"text","text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[658,270,36,30]}
+{"kind":"textbox","id":"sh/qlgf29k3","slide":5,"name":"text","text":"LINK","textPreview":"LINK","textChars":4,"textLines":1,"bbox":[658,320,200,30]}
+{"kind":"textbox","id":"sh/do7ex4ju","slide":5,"name":"text","text":"Exact normalized indicators","textPreview":"Exact normalized indicators","textChars":27,"textLines":1,"bbox":[658,368,200,58]}
+{"kind":"shape","id":"sh/cnyx4j29","slide":5,"name":"box","bbox":[918,250,250,194]}
+{"kind":"textbox","id":"sh/zapwze10","slide":5,"name":"text","text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[940,270,36,30]}
+{"kind":"textbox","id":"sh/ypgf69kf","slide":5,"name":"text","text":"ACT","textPreview":"ACT","textChars":3,"textLines":1,"bbox":[940,320,200,30]}
+{"kind":"textbox","id":"sh/a5kzyd4n","slide":5,"name":"text","text":"Prioritized campaign actions","textPreview":"Prioritized campaign actions","textChars":28,"textLines":1,"bbox":[940,368,200,58]}
+{"kind":"textbox","id":"sh/v6t0ril8","slide":5,"name":"text","text":"Conservative by design","textPreview":"Conservative by design","textChars":22,"textLines":1,"bbox":[72,500,280,30]}
+{"kind":"textbox","id":"sh/w72h0nmt","slide":5,"name":"text","text":"No embeddings. No forced campaign assignment. Only durable, reviewable evidence links.","textPreview":"No embeddings. No forced campaign assignment. Only durable, reviewable evidence links.","textChars":86,"textLines":1,"bbox":[72,542,1030,52]}
+{"kind":"notes","id":"nt/dppb43","slide":5,"text":"The intelligence layer is conservative by design. It normalizes durable indicators and joins them through exact campaign evidence.\nIf the evidence is weak, the case stays unmatched. That protects trust and gives analysts a reviewable trail."}
+{"kind":"slide","id":"sl/bzej3f","slide":6,"title":"CHECKVAR 2.0","textShapes":20}
+{"kind":"textbox","id":"sh/8v6lcvax","slide":6,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/7ux4jqtc","slide":6,"name":"page","text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/6to3alcr","slide":6,"name":"text","text":"Bank teams see what matters—and what to do next.","textPreview":"Bank teams see what matters—and what to do next.","textChars":48,"textLines":1,"bbox":[72,80,1080,58]}
+{"kind":"shape","id":"sh/lsfmhgb6","slide":6,"name":"box","bbox":[72,174,1136,84]}
+{"kind":"textbox","id":"sh/kr6l8bu1","slide":6,"name":"text","text":"WHAT TO DO NEXT","textPreview":"WHAT TO DO NEXT","textChars":15,"textLines":1,"bbox":[96,194,270,26]}
+{"kind":"textbox","id":"sh/jqd4f6tg","slide":6,"name":"text","text":"Review 2 VCB beneficiary accounts","textPreview":"Review 2 VCB beneficiary accounts","textChars":33,"textLines":1,"bbox":[410,190,600,34]}
+{"kind":"textbox","id":"sh/yp4361cv","slide":6,"name":"text","text":"DUE IN 2H","textPreview":"DUE IN 2H","textChars":9,"textLines":1,"bbox":[1040,196,130,24]}
+{"kind":"textbox","id":"sh/5ozmtkbq","slide":6,"name":"text","text":"PRIORITIZED CAMPAIGNS","textPreview":"PRIORITIZED CAMPAIGNS","textChars":21,"textLines":1,"bbox":[72,304,320,24]}
+{"kind":"textbox","id":"sh/4nq5kfa5","slide":6,"name":"text","text":"VNeID SUPPORT LOOP","textPreview":"VNeID SUPPORT LOOP","textChars":18,"textLines":1,"bbox":[72,348,390,28]}
+{"kind":"textbox","id":"sh/6d476pkr","slide":6,"name":"text","text":"52 reports","textPreview":"52 reports","textChars":10,"textLines":1,"bbox":[500,348,150,28]}
+{"kind":"textbox","id":"sh/7ed8zu1c","slide":6,"name":"text","text":"₫214M","textPreview":"₫214M","textChars":5,"textLines":1,"bbox":[700,348,130,28]}
+{"kind":"textbox","id":"sh/sfmp8z2x","slide":6,"name":"text","text":"RAPIDLY SPREADING","textPreview":"RAPIDLY SPREADING","textChars":17,"textLines":1,"bbox":[900,348,270,28]}
+{"kind":"shape","id":"sh/tgvq14j2","slide":6,"name":"box","bbox":[72,396,1090,1]}
+{"kind":"textbox","id":"sh/i9k725kf","slide":6,"name":"text","text":"REFUND QR RELAY","textPreview":"REFUND QR RELAY","textChars":15,"textLines":1,"bbox":[72,420,390,28]}
+{"kind":"textbox","id":"sh/jat8va10","slide":6,"name":"text","text":"29 reports","textPreview":"29 reports","textChars":10,"textLines":1,"bbox":[500,420,150,28]}
+{"kind":"textbox","id":"sh/kb2p4f2l","slide":6,"name":"text","text":"₫74M","textPreview":"₫74M","textChars":4,"textLines":1,"bbox":[700,420,130,28]}
+{"kind":"textbox","id":"sh/5cbqxkj6","slide":6,"name":"text","text":"NEW ACTIVITY","textPreview":"NEW ACTIVITY","textChars":12,"textLines":1,"bbox":[900,420,270,28]}
+{"kind":"shape","id":"sh/25ore9kz","slide":6,"name":"box","bbox":[72,468,1090,1]}
+{"kind":"textbox","id":"sh/36x87e1k","slide":6,"name":"text","text":"BIOMETRIC RESET TRAP","textPreview":"BIOMETRIC RESET TRAP","textChars":20,"textLines":1,"bbox":[72,492,390,28]}
+{"kind":"textbox","id":"sh/zqp4z6hw","slide":6,"name":"text","text":"24 reports","textPreview":"24 reports","textChars":10,"textLines":1,"bbox":[500,492,150,28]}
+{"kind":"textbox","id":"sh/ypgn610b","slide":6,"name":"text","text":"₫126M","textPreview":"₫126M","textChars":5,"textLines":1,"bbox":[700,492,130,28]}
+{"kind":"textbox","id":"sh/ls7m1gz2","slide":6,"name":"text","text":"RAPIDLY SPREADING","textPreview":"RAPIDLY SPREADING","textChars":17,"textLines":1,"bbox":[900,492,270,28]}
+{"kind":"shape","id":"sh/0ry58bih","slide":6,"name":"box","bbox":[72,540,1090,1]}
+{"kind":"textbox","id":"sh/ne9o36hs","slide":6,"name":"text","text":"Overview first. Relationship graph only when an analyst opens a campaign.","textPreview":"Overview first. Relationship graph only when an analyst opens a campaign.","textChars":73,"textLines":1,"bbox":[72,604,980,28]}
+{"kind":"notes","id":"nt/bzej3f","slide":6,"text":"The bank view starts with the operational question: what needs attention now?\nTeams can filter by bank and tactic, rank campaigns, review evidence, hand off to fraud analysts or SOC, and export high-confidence accounts for ban review."}
+{"kind":"slide","id":"sl/mu9wrf","slide":7,"title":"CHECKVAR 2.0","textShapes":15}
+{"kind":"textbox","id":"sh/gzu543ql","slide":7,"name":"brand","text":"CHECKVAR 2.0","textPreview":"CHECKVAR 2.0","textChars":12,"textLines":1,"bbox":[64,34,220,24]}
+{"kind":"textbox","id":"sh/fylovip0","slide":7,"name":"page","text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1150,34,60,24]}
+{"kind":"textbox","id":"sh/uxcn2d8f","slide":7,"name":"text","text":"The product is built.\nNow prove the loop.","textPreview":"The product is built. | Now prove the loop.","textChars":41,"textLines":2,"bbox":[72,110,760,130]}
+{"kind":"textbox","id":"sh/p4n61s72","slide":7,"name":"text","text":"Pilot with one bank, one scam family, and one measurable outcome:","textPreview":"Pilot with one bank, one scam family, and one measurable outcome:","textChars":65,"textLines":1,"bbox":[72,282,900,36]}
+{"kind":"shape","id":"sh/43ep8nqh","slide":7,"name":"box","bbox":[72,354,1136,96]}
+{"kind":"textbox","id":"sh/32lozipw","slide":7,"name":"text","text":"REDUCE TIME FROM FIRST SIGNAL TO CUSTOMER PROTECTION","textPreview":"REDUCE TIME FROM FIRST SIGNAL TO CUSTOMER PROTECTION","textChars":52,"textLines":1,"bbox":[104,383,1010,34]}
+{"kind":"textbox","id":"sh/21c76d8b","slide":7,"name":"text","text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[72,508,44,26]}
+{"kind":"textbox","id":"sh/58j6po7y","slide":7,"name":"text","text":"CONNECT","textPreview":"CONNECT","textChars":7,"textLines":1,"bbox":[130,506,250,28]}
+{"kind":"textbox","id":"sh/k7a5wjqd","slide":7,"name":"text","text":"Campaign + case data","textPreview":"Campaign + case data","textChars":20,"textLines":1,"bbox":[130,542,260,30]}
+{"kind":"textbox","id":"sh/iloba50n","slide":7,"name":"text","text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[447,508,44,26]}
+{"kind":"textbox","id":"sh/jmxs3ah8","slide":7,"name":"text","text":"RUN","textPreview":"RUN","textChars":3,"textLines":1,"bbox":[505,506,250,28]}
+{"kind":"textbox","id":"sh/4nqtcfit","slide":7,"name":"text","text":"30-day monitored pilot","textPreview":"30-day monitored pilot","textChars":22,"textLines":1,"bbox":[505,542,260,30]}
+{"kind":"textbox","id":"sh/5oza5kze","slide":7,"name":"text","text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[822,508,44,26]}
+{"kind":"textbox","id":"sh/6p8bep0z","slide":7,"name":"text","text":"MEASURE","textPreview":"MEASURE","textChars":7,"textLines":1,"bbox":[880,506,250,28]}
+{"kind":"textbox","id":"sh/rqhs7ahk","slide":7,"name":"text","text":"Detection-to-action time","textPreview":"Detection-to-action time","textChars":24,"textLines":1,"bbox":[880,542,260,30]}
+{"kind":"textbox","id":"sh/sbqtgfi5","slide":7,"name":"text","text":"CHECKVAR 2.0  ·  PROTECT EVERY TRANSFER.","textPreview":"CHECKVAR 2.0  ·  PROTECT EVERY TRANSFER.","textChars":40,"textLines":1,"bbox":[72,638,700,24]}
+{"kind":"notes","id":"nt/mu9wrf","slide":7,"text":"The ask is a focused pilot, not a platform replacement.\nConnect existing campaign and case data, monitor one high-volume scam family for 30 days, and measure whether CheckVar reduces the time from first signal to customer protection.\nClose by offering the live demo: customer check, explainable result, anonymous report, then the bank operations view."}

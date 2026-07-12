@@ -65,13 +65,25 @@ function analysisEvidenceSource(analysis) {
 }
 
 function resultCopy(status, campaign) {
-  const isConfirmed = status === "matched_campaign" && campaign?.analystConfirmed === true;
+  const isContextual = campaign?.matchMethod === "contextual";
+  const isConfirmed =
+    status === "matched_campaign" &&
+    campaign?.analystConfirmed === true &&
+    !isContextual;
   if (isConfirmed) {
     return {
       kicker: "KNOWN CAMPAIGN",
       heading: "Pause this transfer.",
       context: "CONFIRMED CAMPAIGN MATCH",
       match: "ANALYST CONFIRMED",
+    };
+  }
+  if (isContextual) {
+    return {
+      kicker: "LIKELY RELATED CAMPAIGN",
+      heading: "Pause this transfer.",
+      context: "LUNA-ASSISTED CAMPAIGN RELATIONSHIP",
+      match: `${percent(campaign?.matchScore)}% RELATIONSHIP CONFIDENCE`,
     };
   }
   if (["matched_campaign", "possible_match"].includes(status)) {
@@ -132,7 +144,7 @@ function evidenceRows(payload) {
       concise(indicator.normalizedValue || indicator.value, 90),
       "validated strong indicator",
       evidenceSource(indicator.evidenceSource),
-      "EXACT",
+      "EXTRACTED",
     ]);
   }
   return rows.slice(0, 8);
@@ -209,7 +221,9 @@ export function campaignCheckResultFromResponse(payload, artifact) {
     campaignId: concise(campaignId, 32).toUpperCase(),
     hasCampaign: Boolean(campaign),
     hasCluster: Boolean(campaign),
-    analystConfirmed: campaign?.analystConfirmed === true,
+    analystConfirmed:
+      campaign?.analystConfirmed === true && campaign?.matchMethod !== "contextual",
+    matchMethod: campaign?.matchMethod || null,
     canPreviewAnonymousReport: !isNotScam,
     match: copy.match,
     confidence: percent(analysis.confidence),

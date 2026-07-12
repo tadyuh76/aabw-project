@@ -3,9 +3,13 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { GET } from "../app/api/bank-intelligence/route.js";
+import { GET as GET_CAMPAIGN_DETAIL } from "../app/api/bank-intelligence/[campaignId]/route.js";
 import {
   BankIntelligenceError,
+  loadBankCampaignDetail,
   loadBankIntelligence,
+  parseCampaignEvidence,
+  parseCampaignIndicators,
   parseCampaignRegistry,
   parseMetricSnapshot,
 } from "../src/server/bank-intelligence.js";
@@ -90,6 +94,34 @@ const CAMPAIGN_ROWS = [
   },
 ];
 
+const DETAIL_INDICATOR_ROWS = [
+  {
+    role: "anchor",
+    weight: 0.98,
+    reasons: [{ reason_type: "shared_strong_indicator", shared_document_count: 3 }],
+    indicators: {
+      id: "a763bdee-16e0-4f51-b923-ad4e447450db",
+      kind: "bank_account",
+      display_value: "9704000123456",
+    },
+  },
+];
+
+const DETAIL_EVIDENCE_ROWS = [
+  {
+    document_id: "6efc04d3-44b0-4c51-8ca7-c2b30951a6f5",
+    membership_score: 0.94,
+    reasons: [{ reason_type: "analyst_confirmation" }],
+    analyst_confirmed: true,
+    documents: {
+      title: "  Exact\n campaign warning  ",
+      canonical_url: "https://example.com/report?tracking=kept-out#section",
+      platform: "facebook",
+      published_at: "2026-07-11T10:00:00+00:00",
+    },
+  },
+];
+
 function responseJson(body, { contentRange, status = 200 } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (contentRange) headers["Content-Range"] = contentRange;
@@ -135,7 +167,7 @@ test("parseCampaignRegistry returns sanitized camelCase summaries", () => {
 
   assert.deepEqual(campaign, {
     id: CAMPAIGN_ROWS[0].id,
-    campaignKey: "bank_account:9704000123456",
+    campaignKey: "bank_account:••••3456",
     label: "Fake bank verification",
     status: "confirmed",
     analystConfirmed: true,
@@ -153,6 +185,73 @@ test("parseCampaignRegistry returns sanitized camelCase summaries", () => {
   assert.throws(
     () => parseCampaignRegistry([{ ...CAMPAIGN_ROWS[0], status: "dismissed" }]),
     BankIntelligenceError,
+  );
+});
+
+test("campaign detail parsers mask sensitive indicators and sanitize evidence", () => {
+  assert.deepEqual(parseCampaignIndicators(DETAIL_INDICATOR_ROWS), [
+    {
+      id: DETAIL_INDICATOR_ROWS[0].indicators.id,
+      kind: "bank_account",
+      displayValue: "bank account ••••3456",
+      role: "anchor",
+      weight: 0.98,
+      reasons: ["Exact indicator shared across 3 sources"],
+    },
+  ]);
+  assert.deepEqual(parseCampaignEvidence(DETAIL_EVIDENCE_ROWS), [
+    {
+      documentId: DETAIL_EVIDENCE_ROWS[0].document_id,
+      title: "Exact campaign warning",
+      platform: "facebook",
+      url: "https://example.com/report",
+      publishedAt: "2026-07-11T10:00:00.000Z",
+      membershipScore: 0.94,
+      analystConfirmed: true,
+      reasons: ["Relationship confirmed by an analyst"],
+    },
+  ]);
+});
+
+test("loadBankCampaignDetail reads one active campaign with capped linked evidence", async () => {
+  const calls = [];
+  const result = await loadBankCampaignDetail({
+    campaignId: CAMPAIGN_ROWS[0].id,
+    supabaseUrl: "https://example.supabase.co",
+    serviceRoleKey: "server-secret",
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.pathname.endsWith("/campaigns")) return responseJson([CAMPAIGN_ROWS[0]]);
+      if (url.pathname.endsWith("/campaign_indicators")) {
+        return responseJson(DETAIL_INDICATOR_ROWS);
+      }
+      return responseJson(DETAIL_EVIDENCE_ROWS);
+    },
+  });
+
+  assert.equal(result.campaign.id, CAMPAIGN_ROWS[0].id);
+  assert.equal(result.indicators[0].displayValue, "bank account ••••3456");
+  assert.equal(result.evidence[0].title, "Exact campaign warning");
+  assert.equal(calls[0].searchParams.get("is_active"), "eq.true");
+  assert.equal(calls[1].searchParams.get("limit"), "24");
+  assert.equal(calls[2].searchParams.get("limit"), "8");
+  assert.equal(JSON.stringify(result).includes("9704000123456"), false);
+  assert.equal(JSON.stringify(result).includes("server-secret"), false);
+});
+
+test("loadBankCampaignDetail rejects invalid and missing campaign ids", async () => {
+  await assert.rejects(
+    loadBankCampaignDetail({ campaignId: "not-a-campaign" }),
+    (error) => error instanceof BankIntelligenceError && error.status === 400,
+  );
+  await assert.rejects(
+    loadBankCampaignDetail({
+      campaignId: CAMPAIGN_ROWS[0].id,
+      supabaseUrl: "https://example.supabase.co",
+      serviceRoleKey: "server-secret",
+      fetchImpl: async () => responseJson([]),
+    }),
+    (error) => error instanceof BankIntelligenceError && error.status === 404,
   );
 });
 
@@ -183,7 +282,7 @@ test("loadBankIntelligence maps the active campaign registry without leaking raw
     false,
   );
   assert.equal(calls[1].options.headers.Prefer, "count=exact");
-  assert.equal(result.campaigns[0].campaignKey, CAMPAIGN_ROWS[0].campaign_key);
+  assert.equal(result.campaigns[0].campaignKey, "bank_account:••••3456");
   assert.equal(result.campaigns[0].analystConfirmed, true);
   assert.equal(result.campaigns[1].status, "provisional");
   assert.equal(JSON.stringify(result).includes("server-secret"), false);
@@ -272,7 +371,7 @@ test("bank intelligence route returns cacheable live aggregates", async (t) => {
   assert.equal(body.status, "live");
   assert.equal(body.snapshot.linkedCampaigns, 1);
   assert.equal(body.snapshot.activeCampaigns, 1);
-  assert.equal(body.campaigns[0].campaignKey, CAMPAIGN_ROWS[0].campaign_key);
+  assert.equal(body.campaigns[0].campaignKey, "bank_account:••••3456");
   assert.equal(
     response.headers.get("cache-control"),
     "public, s-maxage=20, stale-while-revalidate=40",
@@ -300,6 +399,39 @@ test("bank intelligence route returns non-cacheable sanitized 503", async (t) =>
   assert.equal(response.status, 503);
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.deepEqual(await response.json(), { status: "unavailable" });
+});
+
+test("campaign detail route returns a sanitized live payload", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.SUPABASE_URL;
+  const originalKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = originalUrl;
+    if (originalKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = originalKey;
+  });
+
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "server-secret";
+  globalThis.fetch = async (url) => {
+    if (url.pathname.endsWith("/campaigns")) return responseJson([CAMPAIGN_ROWS[0]]);
+    if (url.pathname.endsWith("/campaign_indicators")) {
+      return responseJson(DETAIL_INDICATOR_ROWS);
+    }
+    return responseJson(DETAIL_EVIDENCE_ROWS);
+  };
+
+  const response = await GET_CAMPAIGN_DETAIL(null, {
+    params: Promise.resolve({ campaignId: CAMPAIGN_ROWS[0].id }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.status, "live");
+  assert.equal(body.campaign.id, CAMPAIGN_ROWS[0].id);
+  assert.equal(body.indicators[0].displayValue, "bank account ••••3456");
+  assert.equal(JSON.stringify(body).includes("9704000123456"), false);
 });
 
 test("admin registry distinguishes provisional records from customer match results", async () => {

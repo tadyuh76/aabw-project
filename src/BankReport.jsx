@@ -1,142 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   ArrowLeft,
   ArrowRight,
   Bank,
-  Check,
   CheckCircle,
-  DownloadSimple,
-  FileCsv,
-  FileText,
-  Eye,
-  LinkSimple,
-  MagnifyingGlass,
   Moon,
-  PaperPlaneTilt,
-  Plus,
   ShieldCheck,
   Sun,
   X,
-  XCircle,
 } from "@phosphor-icons/react";
-import { CampaignGraph } from "./CampaignGraph.jsx";
 import { BankCharts } from "./BankCharts.jsx";
 import { ScamConstellation } from "./ScamConstellation.jsx";
 import {
   campaign,
   bankOptions,
-  graphLinks,
-  graphNodes,
-  indicators as initialIndicators,
-  nodeDetails,
-  evidence,
   overviewActions,
   overviewCampaigns,
   tacticOptions,
-  socialPosts,
 } from "./bankMockData.js";
-
-const EXPORT_OPTIONS = [
-  {
-    id: "soc",
-    label: "SEND TO SOC",
-    note: "Open a remediation case to contain internal exposure and close control gaps.",
-    channel: "REMEDIATION CASE · API",
-    result: "SOC remediation package prepared for CASE-SOC-2041",
-    toastTitle: "SOC HANDOFF READY",
-    deliveryNote: "DEMO MODE · NO EXTERNAL SYSTEM CONTACTED",
-    icon: ShieldCheck,
-    actionIcon: PaperPlaneTilt,
-  },
-  {
-    id: "analysts",
-    label: "ESCALATE TO FRAUD ANALYSTS",
-    note: "Investigate emerging cases and determine whether they form a structured scam campaign.",
-    channel: "INVESTIGATION QUEUE · WEBHOOK",
-    result: "Emerging-campaign investigation package prepared for INV-8831",
-    toastTitle: "ANALYST HANDOFF READY",
-    deliveryNote: "DEMO MODE · NO EXTERNAL SYSTEM CONTACTED",
-    icon: MagnifyingGlass,
-    actionIcon: ArrowRight,
-  },
-  {
-    id: "banlist",
-    label: "EXPORT HIGH-CONFIDENCE SCAM ACCOUNT LIST",
-    note: "Package confirmed scam accounts with linked evidence for ban review.",
-    channel: "BAN REVIEW · CSV",
-    icon: FileCsv,
-    actionIcon: DownloadSimple,
-  },
-];
-
-const BAN_CONFIDENCE_THRESHOLD = 95;
-
-const HIGH_CONFIDENCE_SCAM_ACCOUNTS = [
-  {
-    bank: "MB",
-    account: "•••• 8086",
-    accountRef: "BANK-ACCT-0008086",
-    confidence: 98,
-    evidenceRefs: [
-      evidence.phoneRotation.reference,
-      evidence.moneyFlow.reference,
-      evidence.language.reference,
-      evidence.infrastructure.reference,
-    ],
-    sourceRefs: [socialPosts.telegram.reference, socialPosts.customer.reference],
-    decisionAt: "2026-07-11T09:24:00+07:00",
-    status: "confirmed",
-  },
-  {
-    bank: "ACB",
-    account: "•••• 1042",
-    accountRef: "BANK-ACCT-0001042",
-    confidence: 96,
-    evidenceRefs: [
-      evidence.moneyFlow.reference,
-      evidence.language.reference,
-      evidence.infrastructure.reference,
-    ],
-    sourceRefs: [socialPosts.telegram.reference, socialPosts.customer.reference],
-    decisionAt: "2026-07-11T09:24:00+07:00",
-    status: "confirmed",
-  },
-  {
-    bank: "VCB",
-    account: "•••• 9214",
-    accountRef: "BANK-ACCT-0009214",
-    confidence: 91,
-    evidenceRefs: [evidence.phoneRotation.reference, evidence.moneyFlow.reference],
-    sourceRefs: [socialPosts.customer.reference],
-    decisionAt: null,
-    status: "suggested",
-  },
-];
-
-const BAN_READY_ACCOUNTS = HIGH_CONFIDENCE_SCAM_ACCOUNTS.filter(
-  (account) => account.status === "confirmed" && account.confidence >= BAN_CONFIDENCE_THRESHOLD,
-);
-const BAN_READY_EVIDENCE_COUNT = new Set(
-  BAN_READY_ACCOUNTS.flatMap((account) => account.evidenceRefs),
-).size;
-const BAN_READY_SOURCE_COUNT = new Set(
-  BAN_READY_ACCOUNTS.flatMap((account) => account.sourceRefs),
-).size;
-
-const INITIAL_RELATIONSHIP_STATUSES = Object.fromEntries(
-  graphLinks.map((link) => [link.id, link.status]),
-);
-
-const REVIEW_EDGE_BY_NODE = {
-  "report-12843": "l5",
-  "facebook-883": "l3",
-  "phone-new": "l17",
-  "account-new": "l15",
-  phrase: "l13",
-};
 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, contained: 4 };
 const SNAPSHOT_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
@@ -153,6 +37,34 @@ const CAMPAIGN_ROLE_GUIDE = [
   ["SUPPORTING", "Weighted corroboration"],
   ["CONTEXT", "Low-weight context"],
 ];
+const BANK_PATTERNS = {
+  MB: /\bmb(?: bank)?\b/u,
+  VCB: /\b(?:vcb|vietcombank)\b/u,
+  ACB: /\bacb\b/u,
+  TPBANK: /\b(?:tpbank|tp bank)\b/u,
+  TECHCOMBANK: /\btechcombank\b/u,
+  BIDV: /\bbidv\b/u,
+  VPBANK: /\b(?:vpbank|vp bank)\b/u,
+};
+const TACTIC_PATTERNS = {
+  IMPERSONATION: /imperson|gia danh|gi danh|m o danh|fake support/u,
+  PHISHING: /phishing|credential|fake login/u,
+  "QR RELAY": /\bqr\b/u,
+  VISHING: /vishing|voice call|caller/u,
+  "ADVANCE FEE": /advance fee|deposit scam|upfront fee/u,
+  "ACCOUNT TAKEOVER": /account takeover|chi m quy|credential theft/u,
+  "MALICIOUS APK": /malicious apk|\bapk\b|malware/u,
+};
+const TAXONOMY_LABELS = {
+  bank_impersonation: "BANK IMPERSONATION",
+  credential_theft: "CREDENTIAL THEFT",
+  phishing: "PHISHING",
+  qr_payment_fraud: "QR PAYMENT FRAUD",
+  fake_payment_notification: "FAKE PAYMENT NOTICE",
+  impersonated_bank: "IMPERSONATED BANK",
+  receiving_account: "RECEIVING ACCOUNT",
+  destination_bank: "DESTINATION BANK",
+};
 
 function formatSnapshotTime(value) {
   return `${SNAPSHOT_TIME_FORMATTER.format(new Date(value)).toUpperCase()} UTC`;
@@ -162,14 +74,76 @@ function formatCampaignTime(value) {
   return value ? formatSnapshotTime(value) : "NOT RECORDED";
 }
 
-function formatRegistryLabel(value) {
-  return value.replaceAll("_", " ").toUpperCase();
+function campaignTaxonomyText(campaign) {
+  return [...campaign.scamTypes, ...campaign.bankRoles, campaign.label]
+    .join(" ")
+    .replaceAll("_", " ")
+    .toLowerCase();
 }
 
-function LiveCampaignRegistry({ analytics }) {
+function campaignHasBank(campaign, bank) {
+  return bank === "ALL BANKS" || BANK_PATTERNS[bank]?.test(campaignTaxonomyText(campaign));
+}
+
+function campaignHasTactic(campaign, tactic) {
+  return tactic === "ALL TACTICS" || TACTIC_PATTERNS[tactic]?.test(campaignTaxonomyText(campaign));
+}
+
+function formatRegistryLabel(value, fallback) {
+  const normalized = String(value || "").toLowerCase();
+  if (TAXONOMY_LABELS[normalized]) return TAXONOMY_LABELS[normalized];
+  for (const [bank, pattern] of Object.entries(BANK_PATTERNS)) {
+    if (pattern.test(normalized.replaceAll("_", " "))) return bank;
+  }
+  return fallback;
+}
+
+function registryLabels(values, fallback) {
+  return [...new Set(values.map((value) => formatRegistryLabel(value, fallback)))].slice(0, 2);
+}
+
+function campaignSeverity(campaign) {
+  if (campaign.maximumSeverity >= 5) return "critical";
+  if (campaign.maximumSeverity === 4) return "high";
+  if (campaign.maximumSeverity === 3) return "medium";
+  return "low";
+}
+
+function deriveLiveAction(campaign) {
+  if (!campaign) return null;
+  if (!campaign.analystConfirmed) {
+    return {
+      campaignId: campaign.id,
+      priority: campaign.riskScore >= 5 ? "URGENT" : "REVIEW",
+      title: "Confirm the strongest campaign link",
+      reason: `${campaign.documentCount} source documents and ${campaign.indicatorCount} exact indicators are linked, but an analyst has not confirmed this campaign yet.`,
+      owner: "Fraud Analysis",
+      cta: "OPEN LIVE EVIDENCE",
+    };
+  }
+  if (campaign.maximumSeverity >= 5) {
+    return {
+      campaignId: campaign.id,
+      priority: "URGENT",
+      title: "Escalate this confirmed high-severity campaign",
+      reason: `The campaign is analyst-confirmed, reaches severity level ${campaign.maximumSeverity}, and was last observed ${formatCampaignTime(campaign.lastSeenAt)}.`,
+      owner: "Fraud Operations",
+      cta: "OPEN LIVE EVIDENCE",
+    };
+  }
+  return {
+    campaignId: campaign.id,
+    priority: "REVIEW",
+    title: "Review the newest linked evidence",
+    reason: `${campaign.documentCount} source documents currently support this active campaign.`,
+    owner: "Fraud Analysis",
+    cta: "OPEN LIVE EVIDENCE",
+  };
+}
+
+function LiveCampaignRegistry({ analytics, campaigns, selectedId, onSelect }) {
   const isLive = analytics.status === "live";
-  const campaigns = isLive ? analytics.campaigns : [];
-  const visibleCampaigns = campaigns.slice(0, 4);
+  const visibleCampaigns = campaigns.slice(0, 8);
 
   return (
     <section className="live-campaign-registry" aria-labelledby="live-campaign-registry-title">
@@ -187,13 +161,13 @@ function LiveCampaignRegistry({ analytics }) {
 
       <div className="registry-method">
         <div className="registry-method-copy">
-          <span>MATCHING METHOD</span>
-          <strong>Deterministic exact normalized-indicator matching.</strong>
-          <p>Resolved values join active campaign indicators. Stored role and weight determine the result; no embeddings or semantic clustering are used.</p>
+          <span>CUSTOMER CAMPAIGN RESOLUTION</span>
+          <strong>Exact signals first, bounded Luna comparison second.</strong>
+          <p>Exact normalized indicators remain authoritative. When infrastructure rotates, stored taxonomy retrieves a small candidate set and Luna compares linked evidence summaries; no embeddings or semantic clustering are used.</p>
           <div className="registry-thresholds">
-            <span>ANCHOR OR ≥0.85 <strong>CAMPAIGN MATCH</strong></span>
-            <span>≥0.55 <strong>POSSIBLE MATCH</strong></span>
-            <span>BELOW 0.55 <strong>STAYS UNMATCHED</strong></span>
+            <span>EXACT + CONFIRMED <strong>KNOWN CAMPAIGN</strong></span>
+            <span>CONTEXT ≥0.75 <strong>LIKELY RELATED</strong></span>
+            <span>BELOW GATES <strong>NEW / UNMATCHED</strong></span>
           </div>
         </div>
         <div className="registry-role-guide" aria-label="Campaign indicator roles">
@@ -209,7 +183,12 @@ function LiveCampaignRegistry({ analytics }) {
             <span>CAMPAIGN</span><span>EVIDENCE</span><span>RISK</span><span>LAST SEEN</span>
           </div>
           {visibleCampaigns.map((item) => (
-            <article key={item.id}>
+            <button
+              className={`live-registry-row${selectedId === item.id ? " selected" : ""}`}
+              key={item.id}
+              onClick={() => onSelect(item.id)}
+              type="button"
+            >
               <div className="live-registry-identity">
                 <span className={item.analystConfirmed ? "known" : "possible"}>
                   {item.analystConfirmed ? "KNOWN CAMPAIGN" : "PROVISIONAL CAMPAIGN"}
@@ -219,7 +198,7 @@ function LiveCampaignRegistry({ analytics }) {
               </div>
               <div className="live-registry-evidence">
                 <strong>{item.documentCount.toLocaleString("en-US")} docs · {item.indicatorCount.toLocaleString("en-US")} total signals</strong>
-                <small>{item.scamTypes.length ? item.scamTypes.slice(0, 2).map(formatRegistryLabel).join(" · ") : "NO SCAM TYPE TAGGED"}</small>
+                <small>{item.scamTypes.length ? registryLabels(item.scamTypes, "OTHER DETECTED TACTIC").join(" · ") : "NO SCAM TYPE TAGGED"}</small>
               </div>
               <div className="live-registry-risk">
                 <strong>{item.riskScore.toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong>
@@ -227,12 +206,12 @@ function LiveCampaignRegistry({ analytics }) {
               </div>
               <div className="live-registry-last-seen">
                 <strong>{formatCampaignTime(item.lastSeenAt)}</strong>
-                <small>{item.status.toUpperCase()} · {item.bankRoles.length ? item.bankRoles.slice(0, 2).map(formatRegistryLabel).join(" · ") : "NO BANK ROLE TAGGED"}</small>
+                <small>{item.status.toUpperCase()} · {item.bankRoles.length ? registryLabels(item.bankRoles, "OTHER BANK SIGNAL").join(" · ") : "NO BANK ROLE TAGGED"}</small>
               </div>
-            </article>
+            </button>
           ))}
           {campaigns.length > visibleCampaigns.length && (
-            <p className="live-registry-overflow">Showing the four highest-risk campaigns of {campaigns.length.toLocaleString("en-US")} active records.</p>
+            <p className="live-registry-overflow">Showing the eight highest-risk campaigns of {campaigns.length.toLocaleString("en-US")} active records in scope.</p>
           )}
         </div>
       ) : (
@@ -249,10 +228,69 @@ function LiveCampaignRegistry({ analytics }) {
   );
 }
 
-function csvCell(value) {
-  let text = String(value ?? "");
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
+function LiveCampaignDetail({ campaign, detailState, detailRef, action, onAction }) {
+  if (!campaign) return null;
+  const detail = detailState.status === "live" ? detailState.data : null;
+  const source = detail?.campaign || campaign;
+  const tacticLabels = registryLabels(source.scamTypes, "OTHER DETECTED TACTIC");
+  const bankLabels = registryLabels(source.bankRoles, "OTHER BANK SIGNAL");
+
+  return (
+    <section className="specific-scam live-specific-scam" id="live-campaign-detail" ref={detailRef}>
+      <div className="specific-scam-header">
+        <div>
+          <span>LIVE CAMPAIGN / {source.id.slice(0, 8).toUpperCase()}</span>
+          <h2>{source.label}</h2>
+          <p>This active Supabase campaign links {source.documentCount.toLocaleString("en-US")} source documents through {source.indicatorCount.toLocaleString("en-US")} exact stored indicators.</p>
+        </div>
+        <div className="case-status">
+          <strong className={campaignSeverity(source)}>{source.analystConfirmed ? "ANALYST CONFIRMED" : "PROVISIONAL"}</strong>
+          <span>RISK {source.riskScore.toLocaleString("en-US", { maximumFractionDigits: 2 })} · {(source.averageConfidence * 100).toFixed(0)}% AVG CONFIDENCE</span>
+        </div>
+      </div>
+      <div className="specific-scam-grid">
+        <section>
+          <span>CAMPAIGN SCOPE</span>
+          <p>Stored classification and bank-role tags attached to the campaign evidence.</p>
+          <div className="case-scope-chips">
+            {bankLabels.map((label) => <strong key={label}>{label}</strong>)}
+            {tacticLabels.map((label) => <em key={label}>{label}</em>)}
+          </div>
+        </section>
+        <section>
+          <span>OBSERVATION WINDOW</span>
+          <p>First observed {formatCampaignTime(source.firstSeenAt)}.</p>
+          <small>LAST OBSERVED · {formatCampaignTime(source.lastSeenAt)}</small>
+        </section>
+        <section>
+          <span>LIVE EVIDENCE</span>
+          {detailState.status === "loading" && <p>Loading linked source documents…</p>}
+          {detailState.status === "unavailable" && <p>Linked evidence is temporarily unavailable. No demo evidence has been substituted.</p>}
+          {detail && detail.evidence.length === 0 && <p>No active source documents are linked yet.</p>}
+          {detail?.evidence.slice(0, 4).map((item) => (
+            <strong className="live-evidence-entry" key={item.documentId}>
+              {item.title}
+              <small>{(item.platform || "SOURCE").toUpperCase()} · {(item.membershipScore * 100).toFixed(0)}% LINK{item.analystConfirmed ? " · CONFIRMED" : ""}</small>
+            </strong>
+          ))}
+        </section>
+        <section className="case-next-action">
+          <span>RECOMMENDED NEXT ACTION</span>
+          <h3>{action.title}</h3>
+          <p>{action.reason}</p>
+          <button onClick={onAction}>{action.cta}<ArrowRight size={15} weight="bold" /></button>
+        </section>
+      </div>
+      <div className="case-indicators live-case-indicators">
+        <span>EXACT INDICATORS</span>
+        {detailState.status === "loading" && <small>Loading…</small>}
+        {detail?.indicators.length === 0 && <small>No active indicators are linked.</small>}
+        {detail?.indicators.slice(0, 10).map((item) => (
+          <strong key={item.id}>{item.displayValue} · {item.role.toUpperCase()}</strong>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 export function BankReport() {
@@ -260,18 +298,12 @@ export function BankReport() {
   const [bankFilter, setBankFilter] = useState("ALL BANKS");
   const [tacticFilter, setTacticFilter] = useState("ALL TACTICS");
   const [analytics, setAnalytics] = useState({ status: "loading" });
+  const [selectedLiveCampaignId, setSelectedLiveCampaignId] = useState(null);
+  const [liveDetailState, setLiveDetailState] = useState({ status: "idle" });
   const [selectedCampaignId, setSelectedCampaignId] = useState(campaign.id);
-  const [investigationOpen, setInvestigationOpen] = useState(false);
-  const [relationshipStatuses, setRelationshipStatuses] = useState(INITIAL_RELATIONSHIP_STATUSES);
-  const [selectedNode, setSelectedNode] = useState("report-12843");
-  const [indicators, setIndicators] = useState(initialIndicators);
-  const [indicatorOpen, setIndicatorOpen] = useState(false);
-  const [newIndicator, setNewIndicator] = useState({ type: "DOMAIN", value: "vneid-xacminh[.]online" });
   const [exported, setExported] = useState(null);
-  const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const evidenceOpenerRef = useRef(null);
-  const evidenceCloseRef = useRef(null);
   const caseDetailRef = useRef(null);
+  const liveCampaignDetailRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -319,6 +351,72 @@ export function BankReport() {
     };
   }, []);
 
+  const filteredLiveCampaigns = useMemo(
+    () => analytics.status === "live"
+      ? analytics.campaigns.filter(
+        (item) => campaignHasBank(item, bankFilter) && campaignHasTactic(item, tacticFilter),
+      )
+      : [],
+    [analytics, bankFilter, tacticFilter],
+  );
+
+  useEffect(() => {
+    if (!filteredLiveCampaigns.length) {
+      setSelectedLiveCampaignId(null);
+      return;
+    }
+    if (!filteredLiveCampaigns.some((item) => item.id === selectedLiveCampaignId)) {
+      setSelectedLiveCampaignId(filteredLiveCampaigns[0].id);
+    }
+  }, [filteredLiveCampaigns, selectedLiveCampaignId]);
+
+  const selectedLiveCampaign = filteredLiveCampaigns.find(
+    (item) => item.id === selectedLiveCampaignId,
+  ) || null;
+  const livePriorityAction = deriveLiveAction(selectedLiveCampaign || filteredLiveCampaigns[0]);
+
+  useEffect(() => {
+    if (!selectedLiveCampaignId) {
+      setLiveDetailState({ status: "idle" });
+      return undefined;
+    }
+    const controller = new AbortController();
+    let active = true;
+    const timeout = window.setTimeout(() => controller.abort(), 7000);
+    setLiveDetailState({ status: "loading" });
+
+    async function syncCampaignDetail() {
+      try {
+        const response = await fetch(`/api/bank-intelligence/${encodeURIComponent(selectedLiveCampaignId)}`, {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        const payload = await response.json();
+        if (
+          !response.ok ||
+          payload?.status !== "live" ||
+          payload?.campaign?.id !== selectedLiveCampaignId ||
+          !Array.isArray(payload.indicators) ||
+          !Array.isArray(payload.evidence)
+        ) {
+          throw new Error("Invalid live campaign detail response");
+        }
+        if (active) setLiveDetailState({ status: "live", data: payload });
+      } catch {
+        if (active) setLiveDetailState({ status: "unavailable" });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+
+    syncCampaignDetail();
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [selectedLiveCampaignId]);
+
   const filteredCampaigns = useMemo(
     () => overviewCampaigns
       .filter((item) => {
@@ -331,7 +429,6 @@ export function BankReport() {
   );
   const selectedCampaign = filteredCampaigns.find((item) => item.id === selectedCampaignId) || filteredCampaigns[0] || null;
   const filteredActions = overviewActions.filter((action) => filteredCampaigns.some((item) => item.id === action.campaignId));
-  const priorityAction = filteredActions[0] || null;
   const overviewMetrics = analytics.status === "live"
     ? [
       { value: analytics.snapshot.activeCampaigns, label: "ACTIVE CAMPAIGNS" },
@@ -346,170 +443,8 @@ export function BankReport() {
       { value: "—", label: "HIGH-RISK CAMPAIGNS", urgent: true },
     ];
 
-  const selectNode = useCallback((id) => {
-    setSelectedNode(id);
-    setEvidenceOpen(false);
-  }, []);
-  const selected = useMemo(
-    () => graphNodes.find((node) => node.id === selectedNode) || graphNodes[0],
-    [selectedNode],
-  );
-  const selectedDetail = nodeDetails[selected.id] || nodeDetails.campaign;
-  const reviewEdgeId = REVIEW_EDGE_BY_NODE[selected.id];
-  const reviewEdge = graphLinks.find((link) => link.id === reviewEdgeId);
-  const reviewStatus = reviewEdge ? relationshipStatuses[reviewEdge.id] : null;
-  const connectedRelationships = useMemo(
-    () => graphLinks
-      .filter((link) => link.source === selectedNode || link.target === selectedNode)
-      .map((link) => {
-        const otherId = link.source === selectedNode ? link.target : link.source;
-        return {
-          ...link,
-          status: relationshipStatuses[link.id] || link.status,
-          other: graphNodes.find((node) => node.id === otherId),
-        };
-      }),
-    [relationshipStatuses, selectedNode],
-  );
-
-  useEffect(() => {
-    if (!evidenceOpen) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.requestAnimationFrame(() => evidenceCloseRef.current?.focus());
-    function closeOnEscape(event) {
-      if (event.key === "Escape") closeEvidence();
-    }
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [evidenceOpen]);
-
-  function addIndicator(event) {
-    event.preventDefault();
-    const value = newIndicator.value.trim();
-    if (!value) return;
-    setIndicators((current) => [
-      ...current,
-      { type: newIndicator.type, value, state: "NEW", sources: 1 },
-    ]);
-    setIndicatorOpen(false);
-  }
-
-  function updateRelationship(nextStatus) {
-    if (!reviewEdgeId) return;
-    setRelationshipStatuses((current) => ({ ...current, [reviewEdgeId]: nextStatus }));
-  }
-
-  function openEvidence(event) {
-    evidenceOpenerRef.current = event.currentTarget;
-    setEvidenceOpen(true);
-  }
-
-  function closeEvidence() {
-    setEvidenceOpen(false);
-    window.requestAnimationFrame(() => evidenceOpenerRef.current?.focus());
-  }
-
-  function downloadNodeReport() {
-    const rows = [
-      ["category", "label", "value", "source", "reference", "status"],
-      ["node", "campaign", campaign.id, "CheckVar mock intelligence", selected.id, selectedDetail.status],
-      ["node", "type", selected.type, "CheckVar graph", selected.id, selectedDetail.status],
-      ["node", "label", selected.label, "CheckVar graph", selected.id, selectedDetail.status],
-      ["node", "confidence", `${selectedDetail.confidence}%`, "CheckVar analysis", selected.id, selectedDetail.status],
-      ...connectedRelationships.map((link) => [
-        "relationship",
-        link.type,
-        link.other?.label || "Unknown node",
-        "Campaign graph",
-        link.id,
-        link.status,
-      ]),
-      ...selectedDetail.evidence.map((item) => [
-        "evidence",
-        item.title,
-        item.excerpt,
-        item.source,
-        item.reference,
-        "privacy-redacted",
-      ]),
-      ...selectedDetail.relatedPosts.map((post) => [
-        "related_post",
-        post.title,
-        post.excerpt,
-        post.platform,
-        post.reference,
-        "captured",
-      ]),
-    ];
-    downloadCsv(rows, `checkvar-${campaign.id}-${selected.id}-evidence.csv`);
-    setExported({
-      type: "csv",
-      label: "REPORT FILE",
-      title: "REPORT FILE EXPORTED",
-      message: `${selected.label} evidence CSV downloaded`,
-    });
-  }
-
-  function downloadCsv(rows, filename) {
-    const csv = rows.map((row) => row.map(csvCell).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  function downloadBanList() {
-    const rows = [
-      ["bank", "internal_account_ref", "masked_account", "confidence", "evidence_refs", "source_refs", "campaign_id", "decision", "decision_at", "recommended_action"],
-      ...BAN_READY_ACCOUNTS.map((account) => [
-        account.bank,
-        account.accountRef,
-        account.account,
-        `${account.confidence}%`,
-        account.evidenceRefs.join(" | "),
-        account.sourceRefs.join(" | "),
-        campaign.id,
-        account.status,
-        account.decisionAt,
-        "BAN_REVIEW",
-      ]),
-    ];
-    downloadCsv(rows, `checkvar-${campaign.id}-high-confidence-account-ban-list.csv`);
-    setExported({
-      type: "csv",
-      label: "BAN LIST",
-      title: "BAN LIST EXPORTED",
-      message: `${BAN_READY_ACCOUNTS.length} scam accounts exported with ${BAN_READY_EVIDENCE_COUNT} evidence records and ${BAN_READY_SOURCE_COUNT} sources`,
-      deliveryNote: "LOCAL CSV · CUSTOMER IDENTITY EXCLUDED",
-    });
-  }
-
-  function runExport(option) {
-    if (option.id === "banlist") {
-      downloadBanList();
-      return;
-    }
-    setExported({
-      type: option.id,
-      label: option.label,
-      title: option.toastTitle,
-      message: option.result,
-      deliveryNote: option.deliveryNote,
-    });
-  }
-
   function viewCampaign(id) {
     setSelectedCampaignId(id);
-    setInvestigationOpen(false);
     window.requestAnimationFrame(() => caseDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
@@ -524,6 +459,26 @@ export function BankReport() {
     });
   }
 
+  function viewLiveCampaign(id) {
+    setSelectedLiveCampaignId(id);
+    window.requestAnimationFrame(() => liveCampaignDetailRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    }));
+  }
+
+  function runLiveAction() {
+    if (!livePriorityAction) return;
+    viewLiveCampaign(livePriorityAction.campaignId);
+    setExported({
+      type: "action",
+      label: livePriorityAction.priority,
+      title: "LIVE EVIDENCE REVIEW OPENED",
+      message: `${livePriorityAction.title} · ${livePriorityAction.owner}`,
+      deliveryNote: "DEMO ACTION · NO WORKFLOW TABLE UPDATED",
+    });
+  }
+
   return (
     <main className={`bank-shell theme-${theme}`}>
       <div className="noise" aria-hidden="true" />
@@ -533,7 +488,7 @@ export function BankReport() {
         </a>
         <div className="bank-mode"><Bank size={15} weight="fill" /> BANK OPERATIONS</div>
         <div className="bank-header-actions">
-          <span>ANALYST · {campaign.analyst.toUpperCase()}</span>
+          <span>ANALYST MODE · DEMO WORKFLOWS LABELED</span>
           <button
             className="theme-toggle bank-theme-toggle"
             type="button"
@@ -584,7 +539,7 @@ export function BankReport() {
               </strong>
               <p>
                 {analytics.status === "live"
-                  ? `Snapshot scope: ${analytics.snapshot.documentsAnalyzed.toLocaleString("en-US")} analyzed sources · ${analytics.snapshot.evidenceLinkCount.toLocaleString("en-US")} document-indicator links · ${(analytics.snapshot.averageConfidence * 100).toFixed(1)}% average confidence · as of ${formatSnapshotTime(analytics.snapshot.refreshedAt)}. Bank and tactic filters apply only to the prototype workspace.`
+                  ? `Snapshot scope: ${analytics.snapshot.documentsAnalyzed.toLocaleString("en-US")} analyzed sources · ${analytics.snapshot.evidenceLinkCount.toLocaleString("en-US")} document-indicator links · ${(analytics.snapshot.averageConfidence * 100).toFixed(1)}% average confidence · as of ${formatSnapshotTime(analytics.snapshot.refreshedAt)}. Filters now scope the live campaign registry and linked evidence.`
                   : analytics.status === "loading"
                     ? "Only data-backed totals will appear here."
                     : "No mock totals have been substituted."}
@@ -601,22 +556,37 @@ export function BankReport() {
           </section>
 
           <aside className="what-next-card">
-            <div className="what-next-kicker"><span>WHAT TO DO NEXT</span><strong>PROTOTYPE</strong></div>
-            {priorityAction ? (
+            <div className="what-next-kicker"><span>WHAT TO DO NEXT</span><strong>LIVE DATA</strong></div>
+            {livePriorityAction ? (
               <>
-                <h2>{priorityAction.title}</h2>
-                <p>{priorityAction.reason}</p>
-                <button onClick={() => runOverviewAction(priorityAction)}>{priorityAction.cta}<ArrowRight size={15} weight="bold" /></button>
+                <h2>{livePriorityAction.title}</h2>
+                <p>{livePriorityAction.reason}</p>
+                <button onClick={runLiveAction}>{livePriorityAction.cta}<ArrowRight size={15} weight="bold" /></button>
               </>
             ) : (
-              <div className="what-next-clear"><CheckCircle size={25} weight="fill" /><strong>No urgent action in this scope.</strong></div>
+              <div className="what-next-clear"><CheckCircle size={25} weight="fill" /><strong>{analytics.status === "loading" ? "Syncing live campaign actions…" : "No live campaign matches this scope."}</strong></div>
             )}
           </aside>
         </div>
 
         <BankCharts analytics={analytics} />
 
-        <LiveCampaignRegistry analytics={analytics} />
+        <LiveCampaignRegistry
+          analytics={analytics}
+          campaigns={filteredLiveCampaigns}
+          selectedId={selectedLiveCampaignId}
+          onSelect={viewLiveCampaign}
+        />
+
+        {selectedLiveCampaign && livePriorityAction && (
+          <LiveCampaignDetail
+            action={livePriorityAction}
+            campaign={selectedLiveCampaign}
+            detailRef={liveCampaignDetailRef}
+            detailState={liveDetailState}
+            onAction={runLiveAction}
+          />
+        )}
 
         <div className="activity-grid">
           <section className="activity-card">
@@ -711,7 +681,7 @@ export function BankReport() {
           <section className="specific-scam" id="case-detail" ref={caseDetailRef}>
             <div className="specific-scam-header">
               <div>
-                <span>SPECIFIC SCAM / {selectedCampaign.id}</span>
+                <span>PROTOTYPE CAMPAIGN · DEMO DATA / {selectedCampaign.id}</span>
                 <h2>{selectedCampaign.plainName}</h2>
                 <p>{selectedCampaign.summary}</p>
               </div>
@@ -746,239 +716,17 @@ export function BankReport() {
               </section>
             </div>
             <div className="case-indicators">
-              <span>KNOWN INDICATORS</span>
+              <span>DEMO INDICATORS</span>
               {selectedCampaign.indicators.map((item) => <strong key={item}>{item}</strong>)}
             </div>
-            {selectedCampaign.id === campaign.id && (
-              <button className="open-investigation" onClick={() => setInvestigationOpen((current) => !current)}>
-                <Eye size={17} weight="bold" /> {investigationOpen ? "HIDE RELATIONSHIP INVESTIGATION" : "OPEN RELATIONSHIP INVESTIGATION"}
-              </button>
-            )}
           </section>
         )}
 
-        {investigationOpen && selectedCampaign?.id === campaign.id && <section className="deep-investigation">
-          <div className="deep-investigation-heading">
-            <div><span>DEEP INVESTIGATION</span><h2>{campaign.name}</h2></div>
-            <p>Select a signal to review its evidence and confirm or reject suggested relationships.</p>
-          </div>
-          <div className="bank-workspace">
-          <section className="graph-panel">
-            <div className="bank-panel-title">
-              <div>
-                <span>RELATIONSHIP GRAPH</span>
-                <small>Social signals + privacy-redacted reports</small>
-              </div>
-              <div className="graph-legend">
-                <span><i className="confirmed" /> CONFIRMED</span>
-                <span><i className="suggested" /> SUGGESTED</span>
-              </div>
-            </div>
-            <div className="graph-stage">
-              <CampaignGraph
-                nodes={graphNodes}
-                links={graphLinks}
-                selectedId={selectedNode}
-                onSelect={selectNode}
-                relationshipStatuses={relationshipStatuses}
-              />
-              <div className="graph-help">SCROLL TO ZOOM · DRAG TO PAN · SELECT A NODE</div>
-              <div className="selected-node-chip">
-                <span>{selected.type.toUpperCase()}</span>
-                <strong>{selected.label}</strong>
-              </div>
-            </div>
-          </section>
-
-          <aside className="relationship-review node-inspector" data-selected-node={selected.id}>
-            <div className="review-heading">
-              <div>
-                <span>NODE INTELLIGENCE / {selected.type.toUpperCase()}</span>
-                <strong className={(reviewStatus || "confirmed").toLowerCase()}>{selectedDetail.status}</strong>
-              </div>
-              <small>{selectedDetail.confidence}%</small>
-            </div>
-            <h2>{selected.label}</h2>
-            <p>{selectedDetail.summary}</p>
-            <div className="node-facts">
-              {selectedDetail.facts.map((item, index) => (
-                <div key={item.label}>
-                  <span>0{index + 1} / {item.label}</span>
-                  <strong>{item.value}</strong>
-                  <small>{item.note}</small>
-                </div>
-              ))}
-            </div>
-            <div className="node-connections">
-              <span>CONNECTED RELATIONSHIPS</span>
-              {connectedRelationships.slice(0, 3).map((link) => (
-                <div key={link.id}>
-                  <strong>{link.type.replaceAll("_", " ")}</strong>
-                  <small>{link.other?.label}</small>
-                  <em className={link.status}>{link.status}</em>
-                </div>
-              ))}
-            </div>
-            <div className="related-post-preview">
-              <span>RELATED POSTS</span>
-              {selectedDetail.relatedPosts.slice(0, 2).map((post) => (
-                <article key={post.reference}>
-                  <div><strong>{post.platform}</strong><small>{post.age}</small></div>
-                  <p>{post.title}</p>
-                </article>
-              ))}
-            </div>
-            {reviewEdge && (
-              reviewStatus === "suggested" ? (
-                <div className="review-actions compact-review-actions">
-                  <button className="confirm-link" onClick={() => updateRelationship("confirmed")}>
-                    <Check size={17} weight="bold" /> CONFIRM LINK
-                  </button>
-                  <button className="reject-link" onClick={() => updateRelationship("rejected")}>
-                    <X size={16} /> REJECT
-                  </button>
-                </div>
-              ) : (
-                <div className={`review-decision ${reviewStatus}`}>
-                  {reviewStatus === "confirmed" ? <CheckCircle size={21} weight="fill" /> : <XCircle size={21} weight="fill" />}
-                  <div>
-                    <strong>{reviewStatus === "confirmed" ? "Relationship confirmed" : "Relationship rejected"}</strong>
-                    <span>Decision recorded by {campaign.analyst}</span>
-                  </div>
-                  <button onClick={() => updateRelationship("suggested")}>UNDO</button>
-                </div>
-              )
-            )}
-            <button className="compact-indicator-action" onClick={() => setIndicatorOpen(true)}>
-              <Plus size={15} weight="bold" /> ADD NEW INDICATOR
-            </button>
-            <div className="node-inspector-actions">
-              <button className="open-evidence-action" onClick={openEvidence}>
-                <Eye size={17} weight="bold" /> OPEN FULL EVIDENCE
-              </button>
-              <button className="download-report-action" onClick={downloadNodeReport}>
-                <DownloadSimple size={17} weight="bold" /> {reviewStatus === "suggested" ? "EXPORT DRAFT FILE" : "EXPORT REPORT FILE"}
-              </button>
-            </div>
-          </aside>
-        </div>
-
-          <div className="bank-detail-grid export-only">
-          <section className="export-section">
-            <div className="section-heading"><div><span>OPERATIONAL ACTIONS</span><small>Turn confirmed campaign evidence into a clear bank response.</small></div></div>
-            <div className="package-summary">
-              <span>ACTION PACKAGE / {campaign.id}-V3</span>
-              <strong>{BAN_READY_ACCOUNTS.length} ban-ready accounts · {BAN_READY_EVIDENCE_COUNT} evidence records · {BAN_READY_SOURCE_COUNT} supporting sources</strong>
-              <p>Policy: confirmed + confidence ≥{BAN_CONFIDENCE_THRESHOLD}%. Customer identity fields remain excluded.</p>
-            </div>
-            <div className="export-options">
-              {EXPORT_OPTIONS.map((option, index) => {
-                const Icon = option.icon;
-                const ActionIcon = option.actionIcon;
-                return (
-                  <button key={option.id} onClick={() => runExport(option)}>
-                    <span className="action-icon" aria-hidden="true"><Icon size={19} /></span>
-                    <span className="action-copy">
-                      <em>0{index + 1} / {option.channel}</em>
-                      <strong>{option.label}</strong>
-                      <small>{option.note}</small>
-                    </span>
-                    <ActionIcon className="action-affordance" size={15} weight="bold" />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-          </div>
-        </section>}
-
-        <ScamConstellation campaigns={filteredCampaigns.length ? filteredCampaigns : overviewCampaigns} timeRange="30" />
+        <ScamConstellation
+          campaigns={analytics.status === "live" ? filteredLiveCampaigns : []}
+          detail={liveDetailState.status === "live" ? liveDetailState.data : null}
+        />
       </section>
-
-      <AnimatePresence>
-        {indicatorOpen && (
-          <motion.div className="modal-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.form className="indicator-modal" onSubmit={addIndicator} initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}>
-              <button type="button" className="close-modal" aria-label="Close indicator form" onClick={() => setIndicatorOpen(false)}><X size={18} /></button>
-              <p className="eyebrow">NEW CAMPAIGN INDICATOR</p>
-              <h3>Add what the scammer changed.</h3>
-              <label>INDICATOR TYPE
-                <select value={newIndicator.type} onChange={(event) => setNewIndicator((current) => ({ ...current, type: event.target.value }))}>
-                  <option>DOMAIN</option><option>PHONE</option><option>ACCOUNT</option><option>QR PAYLOAD</option><option>SOCIAL HANDLE</option>
-                </select>
-              </label>
-              <label>VALUE
-                <input value={newIndicator.value} onChange={(event) => setNewIndicator((current) => ({ ...current, value: event.target.value }))} />
-              </label>
-              <div className="indicator-provenance"><LinkSimple size={17} /><span>Source: {selected.label}</span><strong>REDACTED</strong></div>
-              <button className="confirm-link" type="submit"><Plus size={17} weight="bold" /> ADD TO CAMPAIGN</button>
-            </motion.form>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {evidenceOpen && (
-          <motion.div
-            className="modal-backdrop evidence-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onMouseDown={(event) => {
-              if (event.target === event.currentTarget) closeEvidence();
-            }}
-          >
-            <motion.section
-              className="full-evidence-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-label={`Full evidence for ${selected.label}`}
-              initial={{ y: 24, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 24, opacity: 0 }}
-            >
-              <button ref={evidenceCloseRef} className="close-modal" aria-label="Close full evidence" onClick={closeEvidence}><X size={18} /></button>
-              <header className="evidence-modal-header">
-                <div><span>FULL EVIDENCE / {selected.type.toUpperCase()}</span><strong>{selectedDetail.status}</strong></div>
-                <h2>{selected.label}</h2>
-                <p>{selectedDetail.summary}</p>
-              </header>
-              <div className="evidence-modal-grid">
-                <section>
-                  <div className="modal-section-title"><FileText size={17} /><span>EVIDENCE RECORDS</span><strong>{selectedDetail.evidence.length}</strong></div>
-                  <div className="full-evidence-list">
-                    {selectedDetail.evidence.map((item) => (
-                      <article key={item.reference}>
-                        <div><span>{item.reference}</span><small>{item.captured}</small></div>
-                        <h3>{item.title}</h3>
-                        <p>{item.excerpt}</p>
-                        <strong>{item.source}</strong>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-                <section>
-                  <div className="modal-section-title"><LinkSimple size={17} /><span>RELATED POSTS</span><strong>{selectedDetail.relatedPosts.length}</strong></div>
-                  <div className="full-post-list">
-                    {selectedDetail.relatedPosts.map((post) => (
-                      <article key={post.reference}>
-                        <div><span>{post.platform}</span><small>{post.age}</small></div>
-                        <h3>{post.title}</h3>
-                        <p>{post.excerpt}</p>
-                        <strong>{post.reference}</strong>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              </div>
-              <footer className="evidence-modal-footer">
-                <p><ShieldCheck size={17} weight="fill" /> Customer identity fields excluded from this evidence package.</p>
-                <button onClick={downloadNodeReport}><DownloadSimple size={17} weight="bold" /> {reviewStatus === "suggested" ? "DOWNLOAD DRAFT CSV" : "DOWNLOAD CSV REPORT"}</button>
-              </footer>
-            </motion.section>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {exported && (

@@ -1,6 +1,10 @@
 const METRIC_SCOPES = "in.(summary,category,severity)";
 const HIGH_RISK_THRESHOLD = 5;
 const CAMPAIGN_STATUSES = new Set(["provisional", "confirmed"]);
+const CAMPAIGN_INDICATOR_ROLES = new Set(["anchor", "shared", "supporting", "context"]);
+const CAMPAIGN_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DETAIL_INDICATOR_LIMIT = 24;
+const DETAIL_EVIDENCE_LIMIT = 8;
 const CAMPAIGN_SELECT = [
   "id",
   "campaign_key",
@@ -103,6 +107,108 @@ function sanitizeTextList(value, field) {
     throw new BankIntelligenceError(`Invalid ${field}`);
   }
   return [...new Set(value.map((item) => sanitizeText(item, field, 80)))].slice(0, 24);
+}
+
+function sanitizeOptionalText(value, field, maximumLength = 220) {
+  if (value == null || value === "") return null;
+  return sanitizeText(value, field, maximumLength);
+}
+
+function safePublicUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    if (!new Set(["http:", "https:"]).has(url.protocol)) return null;
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString().slice(0, 1_000);
+  } catch {
+    return null;
+  }
+}
+
+function maskIndicatorValue(kind, value) {
+  const cleaned = sanitizeText(value, "indicator display value", 300);
+  if (["bank_account", "phone", "transaction_reference"].includes(kind)) {
+    const compact = cleaned.replace(/[^\p{L}\p{N}]/gu, "");
+    return `${kind.replaceAll("_", " ")} ••••${compact.slice(-4) || "----"}`;
+  }
+  if (kind === "email") {
+    const [local, domain] = cleaned.split("@");
+    return domain ? `${local?.slice(0, 1) || "•"}•••@${domain}` : "masked email";
+  }
+  if (kind === "url") {
+    const url = safePublicUrl(cleaned);
+    if (!url) return "untrusted URL";
+    const parsed = new URL(url);
+    return `${parsed.hostname}${parsed.pathname === "/" ? "" : parsed.pathname}`.slice(0, 180);
+  }
+  if (kind === "qr_payload") {
+    const compact = cleaned.replace(/\s+/g, "");
+    return `QR payload ••••${compact.slice(-4) || "----"}`;
+  }
+  if (kind === "domain") {
+    const host = cleaned.replace(/^https?:\/\//iu, "").split(/[/?#]/u, 1)[0];
+    return host || "stored domain indicator";
+  }
+  if (kind === "media_hash") {
+    const compact = cleaned.replace(/[^a-f0-9]/giu, "");
+    return `media hash ••••${compact.slice(-8) || "--------"}`;
+  }
+  if (kind === "social_account") {
+    const compact = cleaned.replace(/^@/u, "");
+    return compact.length > 3
+      ? `@${compact.slice(0, 1)}•••${compact.slice(-2)}`
+      : "masked social account";
+  }
+  const genericKinds = {
+    account_identifier: "Stored account identifier",
+    message_template: "Stored message pattern",
+    money_amount: "Stored amount signal",
+    organization_alias: "Stored organization alias",
+    payment_method: "Stored payment-method signal",
+    person_alias: "Stored person alias",
+  };
+  return genericKinds[kind] || "Stored campaign indicator";
+}
+
+function maskCampaignKey(value) {
+  const cleaned = sanitizeText(value, "campaign key", 160);
+  const separator = cleaned.indexOf(":");
+  if (separator < 1) return cleaned;
+  const kind = cleaned.slice(0, separator);
+  const rawValue = cleaned.slice(separator + 1);
+  if (["bank_account", "phone", "transaction_reference", "email", "qr_payload"].includes(kind)) {
+    return `${kind}:${maskIndicatorValue(kind, rawValue).replace(/^.*? ••••/u, "••••")}`;
+  }
+  return cleaned;
+}
+
+function sanitizeReasonLabels(value) {
+  if (!Array.isArray(value)) return [];
+  const labels = value.map((reason) => {
+    if (!reason || typeof reason !== "object" || Array.isArray(reason)) {
+      return "Linked by stored campaign evidence";
+    }
+    const sourceCount = Number.isSafeInteger(reason.shared_document_count)
+      ? reason.shared_document_count
+      : null;
+    switch (reason.reason_type) {
+      case "shared_strong_indicator":
+        return sourceCount && sourceCount > 1
+          ? `Exact indicator shared across ${sourceCount} sources`
+          : "Exact indicator shared across sources";
+      case "anchor_indicator":
+        return "Matches the campaign anchor indicator";
+      case "analyst_confirmation":
+        return "Relationship confirmed by an analyst";
+      default:
+        return "Linked by stored campaign evidence";
+    }
+  });
+  return [...new Set(labels)].slice(0, 4);
 }
 
 function asNullableIsoTimestamp(value, field) {
@@ -228,7 +334,7 @@ export function parseCampaignRegistry(rows) {
     if (!CAMPAIGN_STATUSES.has(status)) {
       throw new BankIntelligenceError("Invalid campaign status");
     }
-    const campaignKey = sanitizeText(campaign.campaign_key, "campaign key", 160);
+    const campaignKey = maskCampaignKey(campaign.campaign_key);
 
     return {
       id: sanitizeText(campaign.id, "campaign id", 64),
@@ -272,6 +378,57 @@ export function parseCampaignRegistry(rows) {
         campaign.last_seen_at,
         "campaign last seen timestamp",
       ),
+    };
+  });
+}
+
+export function parseCampaignIndicators(rows) {
+  if (!Array.isArray(rows)) {
+    throw new BankIntelligenceError("Campaign indicators are not an array");
+  }
+  return rows.map((row) => {
+    const link = asObject(row, "campaign indicator");
+    const indicator = asObject(link.indicators, "indicator");
+    const role = sanitizeText(link.role, "campaign indicator role", 24);
+    if (!CAMPAIGN_INDICATOR_ROLES.has(role)) {
+      throw new BankIntelligenceError("Invalid campaign indicator role");
+    }
+    const kind = sanitizeText(indicator.kind, "indicator kind", 40);
+    return {
+      id: sanitizeText(indicator.id, "indicator id", 64),
+      kind,
+      displayValue: maskIndicatorValue(kind, indicator.display_value),
+      role,
+      weight: asBoundedNumber(link.weight, "campaign indicator weight", 0, 1),
+      reasons: sanitizeReasonLabels(link.reasons),
+    };
+  });
+}
+
+export function parseCampaignEvidence(rows) {
+  if (!Array.isArray(rows)) {
+    throw new BankIntelligenceError("Campaign evidence is not an array");
+  }
+  return rows.map((row) => {
+    const membership = asObject(row, "campaign document");
+    const document = asObject(membership.documents, "campaign source document");
+    return {
+      documentId: sanitizeText(membership.document_id, "document id", 64),
+      title: sanitizeOptionalText(document.title, "document title", 220) || "Campaign evidence",
+      platform: sanitizeOptionalText(document.platform, "document platform", 40),
+      url: safePublicUrl(document.canonical_url),
+      publishedAt: asNullableIsoTimestamp(document.published_at, "document published timestamp"),
+      membershipScore: asBoundedNumber(
+        membership.membership_score,
+        "campaign membership score",
+        0,
+        1,
+      ),
+      analystConfirmed: asBoolean(
+        membership.analyst_confirmed,
+        "campaign document analyst confirmation",
+      ),
+      reasons: sanitizeReasonLabels(membership.reasons),
     };
   });
 }
@@ -402,6 +559,91 @@ export async function loadBankIntelligence({
   } catch (error) {
     if (error instanceof BankIntelligenceError) throw error;
     throw new BankIntelligenceError("Bank intelligence request failed");
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function loadBankCampaignDetail({
+  campaignId,
+  fetchImpl = fetch,
+  supabaseUrl,
+  serviceRoleKey,
+  timeoutMs = 5000,
+} = {}) {
+  if (!CAMPAIGN_ID_PATTERN.test(campaignId || "")) {
+    throw new BankIntelligenceError("Invalid campaign id", { status: 400 });
+  }
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new BankIntelligenceError("Bank intelligence is not configured", {
+      status: 503,
+    });
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const headers = {
+    Accept: "application/json",
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+
+  try {
+    const campaignUrl = new URL("/rest/v1/campaigns", supabaseUrl);
+    campaignUrl.searchParams.set("select", CAMPAIGN_SELECT);
+    campaignUrl.searchParams.set("id", `eq.${campaignId}`);
+    campaignUrl.searchParams.set("is_active", "eq.true");
+    campaignUrl.searchParams.set("status", "neq.dismissed");
+    campaignUrl.searchParams.set("limit", "1");
+
+    const campaignResponse = await fetchImpl(campaignUrl, {
+      cache: "no-store",
+      headers,
+      signal: controller.signal,
+    });
+    const campaignRows = await readJson(campaignResponse, "Campaign detail");
+    const [campaign] = parseCampaignRegistry(campaignRows);
+    if (!campaign) {
+      throw new BankIntelligenceError("Campaign not found", { status: 404 });
+    }
+
+    const indicatorsUrl = new URL("/rest/v1/campaign_indicators", supabaseUrl);
+    indicatorsUrl.searchParams.set(
+      "select",
+      "role,weight,reasons,indicators(id,kind,display_value)",
+    );
+    indicatorsUrl.searchParams.set("campaign_id", `eq.${campaignId}`);
+    indicatorsUrl.searchParams.set("is_active", "eq.true");
+    indicatorsUrl.searchParams.set("order", "role.asc,weight.desc");
+    indicatorsUrl.searchParams.set("limit", String(DETAIL_INDICATOR_LIMIT));
+
+    const evidenceUrl = new URL("/rest/v1/campaign_documents", supabaseUrl);
+    evidenceUrl.searchParams.set(
+      "select",
+      "document_id,membership_score,reasons,analyst_confirmed,documents(title,canonical_url,platform,published_at)",
+    );
+    evidenceUrl.searchParams.set("campaign_id", `eq.${campaignId}`);
+    evidenceUrl.searchParams.set("is_active", "eq.true");
+    evidenceUrl.searchParams.set("order", "membership_score.desc");
+    evidenceUrl.searchParams.set("limit", String(DETAIL_EVIDENCE_LIMIT));
+
+    const [indicatorResponse, evidenceResponse] = await Promise.all([
+      fetchImpl(indicatorsUrl, { cache: "no-store", headers, signal: controller.signal }),
+      fetchImpl(evidenceUrl, { cache: "no-store", headers, signal: controller.signal }),
+    ]);
+    const [indicatorRows, evidenceRows] = await Promise.all([
+      readJson(indicatorResponse, "Campaign indicators"),
+      readJson(evidenceResponse, "Campaign evidence"),
+    ]);
+
+    return {
+      campaign,
+      indicators: parseCampaignIndicators(indicatorRows),
+      evidence: parseCampaignEvidence(evidenceRows),
+    };
+  } catch (error) {
+    if (error instanceof BankIntelligenceError) throw error;
+    throw new BankIntelligenceError("Campaign detail request failed");
   } finally {
     clearTimeout(timeout);
   }

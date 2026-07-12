@@ -3,7 +3,11 @@ import test from "node:test";
 
 import { campaignCheckResultFromResponse } from "../src/campaignCheckResult.js";
 
-function payload(status, { analystConfirmed = false, withCampaign = true } = {}) {
+function payload(status, {
+  analystConfirmed = false,
+  matchMethod = "exact",
+  withCampaign = true,
+} = {}) {
   return {
     status,
     analysis: {
@@ -31,6 +35,7 @@ function payload(status, { analystConfirmed = false, withCampaign = true } = {})
           label: "Support impersonation",
           status: analystConfirmed ? "confirmed" : "provisional",
           analystConfirmed,
+          matchMethod,
           matchScore: 0.93,
           matchedReasons: [
             {
@@ -71,6 +76,30 @@ test("only analyst-confirmed campaigns receive the known-campaign label", () => 
   );
   assert.equal(result.resultKicker, "KNOWN CAMPAIGN");
   assert.equal(result.analystConfirmed, true);
+});
+
+test("contextual matches stay likely-related even when the stored campaign is confirmed", () => {
+  const contextualPayload = payload("matched_campaign", {
+    analystConfirmed: true,
+    matchMethod: "contextual",
+  });
+  contextualPayload.campaign.matchedReasons = [
+    {
+      indicatorType: "campaign_pattern",
+      normalizedValue: "Urgent APK installation request",
+      role: "context",
+      weight: 0.88,
+      scoreContribution: 0.88,
+      reason: "Luna bounded comparison: repeated VNeID impersonation flow",
+      reasons: ["impersonated_organization", "malicious_app_flow"],
+    },
+  ];
+  const result = campaignCheckResultFromResponse(contextualPayload, "new-domain.example");
+  assert.equal(result.resultKicker, "LIKELY RELATED CAMPAIGN");
+  assert.equal(result.resultContextLabel, "LUNA-ASSISTED CAMPAIGN RELATIONSHIP");
+  assert.equal(result.analystConfirmed, false);
+  assert.equal(result.matchMethod, "contextual");
+  assert.equal(result.evidence[0][0], "CONTEXT MATCH");
 });
 
 test("new unmatched concrete cases remain risky and reportable", () => {

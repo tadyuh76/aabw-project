@@ -696,12 +696,24 @@ export function App() {
                 <span>{isLive ? selected.resultContextLabel : isClear ? "CHECK RESULT" : "CAMPAIGN SIGNAL"}</span>
                 <strong>{selected.campaign}</strong>
                 <p>{selected.headline}</p>
+                <div className="result-confidence" aria-label={`Analysis confidence ${selected.confidence} percent`}>
+                  <div className="result-confidence-value">
+                    <strong>{selected.confidence}%</strong>
+                    <span>ANALYSIS CONFIDENCE</span>
+                  </div>
+                  <div className="result-confidence-track" aria-hidden="true">
+                    <i style={{ width: `${selected.confidence}%` }} />
+                  </div>
+                  <p>Confidence in this analysis—not a guarantee that an input is safe.</p>
+                </div>
                 <small>
                   {isLive
                     ? selected.analystConfirmed
                       ? `KNOWN CAMPAIGN · ${selected.campaignId}`
                       : selected.hasCampaign
-                        ? `POSSIBLE MATCH · ${selected.campaignId}`
+                        ? selected.matchMethod === "contextual"
+                          ? `LIKELY RELATED · ${selected.campaignId}`
+                          : `POSSIBLE MATCH · ${selected.campaignId}`
                         : "NO CAMPAIGN ASSIGNED"
                     : isClear ? "NO EXACT CAMPAIGN MATCH" : `KNOWN CAMPAIGN · ${selected.campaignId}`}
                 </small>
@@ -790,7 +802,7 @@ export function App() {
                   ) : (
                     <p className="detail-empty">No matching public campaign evidence is shown. A missing match does not prove the input is safe.</p>
                   )}
-                  <p className="mock-disclaimer">{isLive ? "LUNA ANALYSIS · EXACT NORMALIZED INDICATOR MATCHING · NO EMBEDDINGS" : "DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS"}</p>
+                  <p className="mock-disclaimer">{isLive ? "LUNA ANALYSIS · EXACT SIGNALS + BOUNDED CAMPAIGN COMPARISON · NO EMBEDDINGS" : "DEMO DATA · SOCIAL LISTENING + ANONYMIZED CUSTOMER REPORTS"}</p>
                 </section>
               </div>
             </details>

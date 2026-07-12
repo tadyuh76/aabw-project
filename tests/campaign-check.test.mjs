@@ -10,6 +10,7 @@ import {
 } from "../app/api/check/route.js";
 import {
   CHECK_ANALYSIS_SCHEMA,
+  CONTEXTUAL_MATCH_SCHEMA,
   CampaignCheckError,
   analyzeCustomerInput,
   createCampaignCheckClients,
@@ -17,7 +18,10 @@ import {
   ensureCampaignTablesReady,
   findCampaignMatch,
   loadCampaignEvidence,
+  loadContextualCandidateProfiles,
   normalizeStrongIndicator,
+  rerankCampaignCandidates,
+  retrieveContextualCampaignCandidates,
   runCampaignCheck,
   validateCheckInput,
 } from "../src/server/campaign-check.js";
@@ -31,6 +35,8 @@ const IDS = {
   emailIndicator: "55555555-5555-4555-8555-555555555555",
   crossProductIndicator: "66666666-6666-4666-8666-666666666666",
   qrIndicator: "77777777-7777-4777-8777-777777777777",
+  contextualCampaign: "88888888-8888-4888-8888-888888888888",
+  contextualDocument: "99999999-9999-4999-8999-999999999999",
 };
 
 function emvField(tag, value) {
@@ -109,6 +115,33 @@ function fakeOpenAI(output, { refusal = null } = {}) {
   return { client, calls };
 }
 
+function fakeOpenAISequence(outputs) {
+  const queue = [...outputs];
+  const calls = [];
+  const client = {
+    responses: {
+      create: async (request) => {
+        calls.push(request);
+        if (!queue.length) throw new Error("Unexpected extra OpenAI call");
+        const next = queue.shift();
+        if (next?.error) throw next.error;
+        if (next?.refusal) {
+          return {
+            output_text: "",
+            output: [{ content: [{ type: "refusal", refusal: next.refusal }] }],
+          };
+        }
+        const output = Object.hasOwn(next || {}, "output") ? next.output : next;
+        return {
+          output_text: typeof output === "string" ? output : JSON.stringify(output),
+          output: [],
+        };
+      },
+    },
+  };
+  return { client, calls };
+}
+
 function cloneQuery(query) {
   return {
     table: query.table,
@@ -150,6 +183,10 @@ function fakeSupabase(resolver) {
           query.filters.push({ op: "neq", column, value });
           return builder;
         },
+        overlaps(column, value) {
+          query.filters.push({ op: "overlaps", column, value: [...value] });
+          return builder;
+        },
         order(column, value) {
           query.orders.push({ column, value });
           return builder;
@@ -180,6 +217,7 @@ function campaignRow(overrides = {}) {
   return {
     id: IDS.campaign,
     campaign_key: "phone:0912345678",
+    anchor_indicator_key: "phone|0912345678",
     label: "Fake bank verification",
     status: "provisional",
     analyst_confirmed: false,
@@ -189,6 +227,8 @@ function campaignRow(overrides = {}) {
     indicator_count: 3,
     maximum_severity: 5,
     average_confidence: 0.93,
+    scam_types: ["bank_impersonation"],
+    bank_roles: ["impersonated_bank"],
     first_seen_at: "2026-07-01T00:00:00.000Z",
     last_seen_at: "2026-07-11T00:00:00.000Z",
     ...overrides,
@@ -614,6 +654,28 @@ test("status decisions honor anchor and score thresholds without forcing nonspec
   );
   assert.equal(
     decideCheckStatus({
+      analysis: { ...concrete, primaryCategory: "noise", specificCase: false },
+      candidate: {
+        anchorMatch: true,
+        matchScore: 1,
+        campaign: { analystConfirmed: false },
+      },
+    }),
+    "possible_match",
+  );
+  assert.equal(
+    decideCheckStatus({
+      analysis: { ...concrete, primaryCategory: "noise", specificCase: false },
+      candidate: {
+        anchorMatch: true,
+        matchScore: 1,
+        campaign: { analystConfirmed: true },
+      },
+    }),
+    "matched_campaign",
+  );
+  assert.equal(
+    decideCheckStatus({
       analysis: { ...concrete, primaryCategory: "news_pr" },
       candidate: { anchorMatch: true, matchScore: 1 },
     }),
@@ -623,6 +685,31 @@ test("status decisions honor anchor and score thresholds without forcing nonspec
     decideCheckStatus({
       analysis: { ...concrete, primaryCategory: "customer_feedback" },
       candidate: null,
+    }),
+    "not_scam",
+  );
+});
+
+test("contextual campaign relationships can only become possible matches", () => {
+  const analysis = matchingAnalysis();
+  const contextual = {
+    matchMethod: "contextual",
+    anchorMatch: true,
+    matchScore: 1,
+    campaign: campaignRow({ status: "confirmed", analyst_confirmed: true }),
+  };
+  assert.equal(decideCheckStatus({ analysis, candidate: contextual }), "possible_match");
+  assert.equal(
+    decideCheckStatus({
+      analysis,
+      candidate: { ...contextual, matchScore: 0.7499 },
+    }),
+    "new_unmatched_case",
+  );
+  assert.equal(
+    decideCheckStatus({
+      analysis: { ...analysis, specificCase: false },
+      candidate: contextual,
     }),
     "not_scam",
   );
@@ -795,6 +882,246 @@ test("unresolved and ineligible indicators never force a campaign match", async 
   });
   assert.equal(unresolved, null);
   assert.deepEqual(db.calls.map((query) => query.table), ["indicators"]);
+});
+
+test("contextual retrieval is bounded to active taxonomy-overlap campaigns", async () => {
+  const related = campaignRow({
+    id: IDS.contextualCampaign,
+    campaign_key: "campaign:contextual",
+    anchor_indicator_key: "domain|rotated.example",
+    scam_types: ["bank_impersonation"],
+    bank_roles: ["impersonated_bank"],
+    document_count: 8,
+  });
+  const bankOnly = campaignRow({
+    id: IDS.dismissedCampaign,
+    campaign_key: "campaign:bank-only",
+    scam_types: ["advance_fee"],
+    bank_roles: ["impersonated_bank"],
+    document_count: 3,
+  });
+  const fuzzyTaxonomy = campaignRow({
+    id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    campaign_key: "campaign:fuzzy-taxonomy",
+    scam_types: ["impersonation"],
+    bank_roles: ["unrelated"],
+    document_count: 2,
+  });
+  const db = fakeSupabase((query) => {
+    assert.equal(query.table, "campaigns");
+    return { data: [
+      related,
+      bankOnly,
+      campaignRow({
+        id: IDS.inactiveCampaign,
+        is_active: false,
+        document_count: 20,
+      }),
+      campaignRow({
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        status: "dismissed",
+        document_count: 20,
+      }),
+      fuzzyTaxonomy,
+    ] };
+  });
+
+  const candidates = await retrieveContextualCampaignCandidates({
+    analysis: matchingAnalysis(),
+    supabaseClient: db.client,
+  });
+
+  assert.deepEqual(candidates.map((item) => item.campaign.id), [
+    IDS.contextualCampaign,
+    fuzzyTaxonomy.id,
+    IDS.dismissedCampaign,
+  ]);
+  assert.ok(candidates[0].retrieval.score > candidates[1].retrieval.score);
+  assert.equal(db.calls.length, 3);
+  for (const query of db.calls) {
+    assert.equal(findFilter(query, "eq", "is_active").value, true);
+    assert.equal(findFilter(query, "neq", "status").value, "dismissed");
+    assert.match(query.columns, /scam_types/u);
+    assert.match(query.columns, /bank_roles/u);
+  }
+  const overlapQueries = db.calls.filter((query) => query.filters.some((item) => item.op === "overlaps"));
+  assert.equal(overlapQueries.length, 2);
+  assert.equal(overlapQueries.every((query) => query.limit === 12), true);
+  const scanQuery = db.calls.find((query) => !query.filters.some((item) => item.op === "overlaps"));
+  assert.equal(scanQuery.limit, 80);
+});
+
+test("contextual aliases bridge stored documents to rotated campaign infrastructure", async () => {
+  const bridgedCampaign = campaignRow({
+    id: IDS.contextualCampaign,
+    campaign_key: "campaign:bridged",
+    scam_types: ["legacy_taxonomy"],
+    bank_roles: ["legacy_bank_role"],
+    document_count: 3,
+  });
+  const analysis = matchingAnalysis({
+    scamTypes: ["friend_impersonation"],
+    bankRoles: ["receiving_bank"],
+    indicators: [{
+      type: "organization_alias",
+      value: "VPBank",
+      normalizedValue: "vpbank",
+      evidenceSource: "text",
+      matchEligible: false,
+    }],
+  });
+  const db = fakeSupabase((query) => {
+    if (query.table === "campaigns") return { data: [bridgedCampaign] };
+    if (query.table === "indicators") {
+      return { data: [{ id: "alias-vpbank", kind: "organization_alias", normalized_value: "vpbank" }] };
+    }
+    if (query.table === "document_indicators") {
+      return { data: [{
+        document_id: IDS.contextualDocument,
+        indicator_id: "alias-vpbank",
+        confidence: 0.95,
+      }] };
+    }
+    if (query.table === "campaign_documents") {
+      return { data: [{
+        campaign_id: IDS.contextualCampaign,
+        document_id: IDS.contextualDocument,
+        is_active: true,
+      }] };
+    }
+    throw new Error(`Unexpected table ${query.table}`);
+  });
+
+  const candidates = await retrieveContextualCampaignCandidates({ analysis, supabaseClient: db.client });
+  assert.equal(candidates[0].campaign.id, IDS.contextualCampaign);
+  assert.deepEqual(candidates[0].retrieval.bridgeTypes, ["organization_alias"]);
+  assert.equal(candidates[0].retrieval.bridgeScore, 1);
+  assert.deepEqual(db.calls.map((query) => query.table).sort(), [
+    "campaign_documents",
+    "campaigns",
+    "campaigns",
+    "campaigns",
+    "document_indicators",
+    "indicators",
+  ]);
+});
+
+test("contextual profiles use capped linked Luna summaries", async () => {
+  const candidates = [{
+    campaign: {
+      ...campaignRow({ id: IDS.contextualCampaign }),
+      id: IDS.contextualCampaign,
+      label: "VNeID verification loop",
+      scamTypes: ["bank_impersonation"],
+      bankRoles: ["impersonated_bank"],
+      maximumSeverity: 5,
+    },
+    retrieval: { score: 0.9, scamOverlap: ["bank_impersonation"], bankOverlap: ["impersonated_bank"] },
+  }];
+  const db = fakeSupabase((query) => {
+    if (query.table === "campaign_documents") {
+      return { data: [
+        {
+          campaign_id: IDS.contextualCampaign,
+          document_id: IDS.contextualDocument,
+          membership_score: 0.93,
+          reasons: [],
+          is_active: true,
+        },
+      ] };
+    }
+    if (query.table === "classifications") {
+      return { data: [{
+        document_id: IDS.contextualDocument,
+        primary_category: "impersonation_abuse",
+        scam_types: ["bank_impersonation"],
+        bank_roles: ["impersonated_bank"],
+        specific_case: true,
+        summary: "Fake VNeID support demanded APK installation before an urgent deadline.",
+        severity: 5,
+        confidence: 0.94,
+      }] };
+    }
+    throw new Error(`Unexpected table ${query.table}`);
+  });
+
+  const profiles = await loadContextualCandidateProfiles({ candidates, supabaseClient: db.client });
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].evidence.length, 1);
+  assert.match(profiles[0].evidence[0].classification.summary, /APK installation/u);
+  assert.equal(db.calls.find((query) => query.table === "campaign_documents").limit, 3);
+  assert.deepEqual(
+    findFilter(db.calls.find((query) => query.table === "classifications"), "in", "document_id").value,
+    [IDS.contextualDocument],
+  );
+});
+
+test("Luna reranking returns only a gated contextual relationship", async () => {
+  const campaign = {
+    id: IDS.contextualCampaign,
+    campaignKey: "campaign:contextual",
+    label: "VNeID verification loop",
+    status: "confirmed",
+    analystConfirmed: true,
+    riskScore: 6,
+    documentCount: 3,
+    indicatorCount: 2,
+    maximumSeverity: 5,
+    averageConfidence: 0.94,
+    scamTypes: ["bank_impersonation"],
+    bankRoles: ["impersonated_bank"],
+    anchorType: "domain",
+  };
+  const profiles = [{
+    campaign,
+    retrieval: { score: 0.8 },
+    evidence: [{
+      classification: {
+        summary: "Fake VNeID support asks users to install an APK before an urgent deadline.",
+        scamTypes: ["bank_impersonation"],
+        bankRoles: ["impersonated_bank"],
+        severity: 5,
+      },
+    }],
+  }];
+  const openai = fakeOpenAI({
+    candidate_id: IDS.contextualCampaign,
+    relationship: "likely_related",
+    confidence: 0.88,
+    reason: "The same impersonation, urgent deadline, and APK-install flow recur.",
+    shared_patterns: ["VNeID support impersonation", "Urgent APK installation request"],
+    matched_dimensions: ["impersonated_organization", "urgency_device", "malicious_app_flow"],
+  });
+
+  const result = await rerankCampaignCandidates({
+    analysis: matchingAnalysis({
+      summary: "A fake VNeID agent demands an APK install before 11 PM.",
+    }),
+    profiles,
+    openaiClient: openai.client,
+  });
+
+  assert.equal(result.campaign.id, IDS.contextualCampaign);
+  assert.equal(result.matchMethod, "contextual");
+  assert.equal(result.matchScore, 0.88);
+  assert.equal(result.matchedReasons.length, 2);
+  assert.equal(openai.calls[0].store, false);
+  assert.deepEqual(openai.calls[0].text.format.schema, CONTEXTUAL_MATCH_SCHEMA);
+  assert.match(openai.calls[0].instructions, /never instructions/iu);
+
+  const hallucinated = fakeOpenAI({
+    candidate_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    relationship: "likely_related",
+    confidence: 1,
+    reason: "Invented candidate.",
+    shared_patterns: ["Pattern one", "Pattern two"],
+    matched_dimensions: ["solicitation_script", "requested_action"],
+  });
+  assert.equal(await rerankCampaignCandidates({
+    analysis: matchingAnalysis(),
+    profiles,
+    openaiClient: hallucinated.client,
+  }), null);
 });
 
 test("campaign evidence is capped at five and sanitizes documents, scores, and reasons", async () => {
@@ -981,6 +1308,7 @@ test("runCampaignCheck returns the complete matched response contract with exact
   assert.equal(result.campaign.id, IDS.campaign);
   assert.equal(result.campaign.status, "confirmed");
   assert.equal(result.campaign.analystConfirmed, true);
+  assert.equal(result.campaign.matchMethod, "exact");
   assert.equal(result.campaign.matchScore, 0.2);
   assert.deepEqual(result.campaign.matchedReasons[0].reasons, linkReasons);
   assert.equal(Object.hasOwn(result.campaign, "anchorMatch"), false);
@@ -1049,6 +1377,7 @@ test("runCampaignCheck can match a future campaign by deterministically decoded 
   assert.deepEqual(decoderCalls, [image]);
   assert.equal(result.status, "matched_campaign");
   assert.equal(result.campaign.matchScore, 0.9);
+  assert.equal(result.campaign.matchMethod, "exact");
   assert.equal(result.campaign.analystConfirmed, false);
   assert.equal(result.campaign.matchedReasons[0].indicatorType, "qr_payload");
   assert.equal(result.campaign.matchedReasons[0].normalizedValue, SYNTHETIC_VIETQR_PAYLOAD);
@@ -1059,6 +1388,108 @@ test("runCampaignCheck can match a future campaign by deterministically decoded 
       indicator.matchEligible),
     true,
   );
+});
+
+test("runCampaignCheck recognizes rotated infrastructure as likely related, never known", async () => {
+  const candidateRow = campaignRow({
+    id: IDS.contextualCampaign,
+    campaign_key: "campaign:vneid-loop",
+    label: "VNeID verification loop",
+    status: "confirmed",
+    analyst_confirmed: true,
+    anchor_indicator_key: "domain|old-vneid.example",
+    document_count: 4,
+    scam_types: ["bank_impersonation"],
+    bank_roles: ["impersonated_bank"],
+  });
+  const openai = fakeOpenAISequence([
+    { output: modelAnalysis({
+      summary: "A fake VNeID support agent uses a new domain but repeats an urgent APK-install request.",
+      indicators: [{
+        type: "domain",
+        value: "new-vneid.example",
+        normalized_value: "new-vneid.example",
+        evidence_source: "text",
+      }],
+    }) },
+    { output: {
+      candidate_id: IDS.contextualCampaign,
+      relationship: "likely_related",
+      confidence: 0.91,
+      reason: "The VNeID impersonation, urgent deadline, and APK-install flow recur despite a new domain.",
+      shared_patterns: ["VNeID support impersonation", "Urgent APK installation request"],
+      matched_dimensions: ["impersonated_organization", "urgency_device", "malicious_app_flow"],
+    } },
+  ]);
+  const db = fakeSupabase((query) => {
+    if (query.table === "campaigns" && query.columns === "id") return { data: [] };
+    if (query.table === "campaign_indicators" && query.columns === "campaign_id") return { data: [] };
+    if (query.table === "campaign_documents" && query.columns === "campaign_id") return { data: [] };
+    if (query.table === "indicators") return { data: [] };
+    if (query.table === "campaigns" && query.filters.some((item) => item.op === "overlaps")) {
+      return { data: [candidateRow] };
+    }
+    if (query.table === "campaigns") return { data: [candidateRow] };
+    if (
+      query.table === "campaign_documents" &&
+      query.columns.startsWith("campaign_id,")
+    ) {
+      return { data: [{
+        campaign_id: IDS.contextualCampaign,
+        document_id: IDS.contextualDocument,
+        membership_score: 0.95,
+        reasons: [],
+        is_active: true,
+      }] };
+    }
+    if (query.table === "classifications") {
+      return { data: [{
+        document_id: IDS.contextualDocument,
+        primary_category: "impersonation_abuse",
+        scam_types: ["bank_impersonation"],
+        bank_roles: ["impersonated_bank"],
+        specific_case: true,
+        summary: "Fake VNeID support imposes an urgent deadline and asks the target to install an APK.",
+        severity: 5,
+        confidence: 0.95,
+      }] };
+    }
+    if (query.table === "campaign_documents") {
+      return { data: [{
+        document_id: IDS.contextualDocument,
+        membership_score: 0.95,
+        reasons: [{ basis: "stored campaign membership" }],
+        is_active: true,
+      }] };
+    }
+    if (query.table === "documents") {
+      return { data: [{
+        id: IDS.contextualDocument,
+        title: "VNeID impersonation warning",
+        canonical_url: "https://evidence.example/vneid",
+      }] };
+    }
+    throw new Error(`Unexpected table/query ${query.table} ${query.columns}`);
+  });
+
+  const result = await runCampaignCheck({
+    input: {
+      text: "Use new-vneid.example and install this APK before 11 PM to keep VNeID active.",
+      url: "",
+      image: null,
+    },
+    openaiClient: openai.client,
+    supabaseClient: db.client,
+  });
+
+  assert.equal(result.status, "possible_match");
+  assert.equal(result.campaign.id, IDS.contextualCampaign);
+  assert.equal(result.campaign.analystConfirmed, true);
+  assert.equal(result.campaign.matchMethod, "contextual");
+  assert.equal(result.campaign.matchScore, 0.91);
+  assert.equal(result.evidence.length, 1);
+  assert.equal(openai.calls.length, 2);
+  assert.match(result.recommendedActions.join(" "), /possible campaign match/i);
 });
 
 test("input validation and multipart parsing enforce required fields, URL rules, and image limits", async () => {
